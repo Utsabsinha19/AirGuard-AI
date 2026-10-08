@@ -21,6 +21,9 @@ from backend.app.api.anomalies import router as anomalies_router
 from backend.app.api.alerts import router as alerts_router
 from backend.app.api.actions import router as actions_router
 from backend.app.api.simulator import router as simulator_router
+from backend.app.api.actuation import router as actuation_router
+from backend.app.api.health import router as health_router
+from backend.app.api.enterprise import router as enterprise_router
 from backend.app.ml.predictor_baseline import baseline_predictor
 from backend.app.ml.predictor_neural import neural_predictor
 
@@ -49,8 +52,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    description="Personal Air Quality Intelligence & Multi-Horizon Prediction System",
+    version="3.0.0",
+    description="Autonomous Edge-Intelligent Environmental Health & Closed-Loop Actuation Platform",
     lifespan=lifespan
 )
 
@@ -71,15 +74,20 @@ app.include_router(anomalies_router, prefix=settings.API_V1_PREFIX)
 app.include_router(alerts_router, prefix=settings.API_V1_PREFIX)
 app.include_router(actions_router, prefix=settings.API_V1_PREFIX)
 app.include_router(simulator_router, prefix=settings.API_V1_PREFIX)
+app.include_router(actuation_router, prefix=settings.API_V1_PREFIX)
+app.include_router(health_router, prefix=settings.API_V1_PREFIX)
+app.include_router(enterprise_router, prefix=settings.API_V1_PREFIX)
 
 
 # ---------------------------------------------------------------------------
-# WebSocket Gateway Endpoints (FR-3.4, NFR-1)
+# WebSocket Gateway Endpoints (FR-3.4, NFR-1 & v3.0 Live Streaming)
 # ---------------------------------------------------------------------------
 
 @app.websocket("/ws/telemetry")
+@app.websocket("/v3/live")
+@app.websocket("/api/v3/live")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
-    """Real-time live telemetry stream (<1s update interval)."""
+    """Real-time live telemetry stream (<1s update interval, wss://api.airguard.ai/v3/live)."""
     await ws_manager.connect_telemetry(websocket)
     try:
         while True:
@@ -102,6 +110,25 @@ async def websocket_alerts_endpoint(websocket: WebSocket):
         ws_manager.disconnect_alerts(websocket)
     except Exception:
         ws_manager.disconnect_alerts(websocket)
+
+
+@app.websocket("/v1/live/{device_id}")
+@app.websocket("/api/v1/live/{device_id}")
+@app.websocket("/v3/live/{device_id}")
+@app.websocket("/api/v3/live/{device_id}")
+async def websocket_device_live_endpoint(websocket: WebSocket, device_id: str):
+    """
+    Real-time device-specific atmospheric telemetry live stream
+    ws://api.airguard.ai/v1/live/{device_id} & /v3/live/{device_id}.
+    """
+    await ws_manager.connect_device(device_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect_device(device_id, websocket)
+    except Exception:
+        ws_manager.disconnect_device(device_id, websocket)
 
 
 @app.get("/health")

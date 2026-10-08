@@ -25,10 +25,13 @@ def calibrate_pm25(
     humidity_rh: float,
     temp_c: float = 22.0,
     zero_offset: float = 0.0,
-    gain_scale: float = 1.0
+    gain_scale: float = 1.0,
+    a: float = 0.38,
+    b: float = 2.5
 ) -> float:
     """
-    Corrects optical PM2.5 hygroscopic aerosol swelling.
+    Corrects optical PM2.5 hygroscopic aerosol swelling (v2.0 Section 2.3):
+    PM2.5_calibrated = PM2.5_raw / (1 + a * (RH / 100)^b)
     Also applies device-specific zero offset and sensitivity gain factor.
     """
     if raw_pm25 is None or raw_pm25 < 0:
@@ -41,11 +44,10 @@ def calibrate_pm25(
         return round(float(adjusted_raw), 1)
 
     rh = max(0.0, min(99.0, float(humidity_rh)))
-    if rh <= 50.0:
+    if rh <= 40.0:
         return round(float(adjusted_raw), 1)
 
-    rh_norm = (rh - 50.0) / 50.0
-    correction_factor = 1.0 + 0.35 * (rh_norm ** 2.0)
+    correction_factor = 1.0 + a * ((rh / 100.0) ** b)
     calibrated = adjusted_raw / correction_factor
     return round(max(0.0, calibrated), 1)
 

@@ -9,6 +9,7 @@ env/
 venv/
 *.db
 *.sqlite3
+.pytest_cache/
 
 # Node / Frontend
 node_modules/

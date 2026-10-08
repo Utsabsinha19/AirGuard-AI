@@ -117,7 +117,7 @@ export const SpatialFloorplan: React.FC<SpatialFloorplanProps> = ({
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: "11px", fontWeight: "700", color: "#f8fafc" }}>
-                    {d.room}
+                    {d.room} <span style={{ fontSize: "9px", color: "#38bdf8", fontWeight: "500" }}>[{d.zone || "Indoor"}]</span>
                   </span>
                   <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: color }} />
                 </div>

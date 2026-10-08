@@ -115,6 +115,113 @@ async def trigger_scenario(req: ScenarioTriggerRequest, db: AsyncSession = Depen
             "message": "Injected Fresh Air Window Opening (PM2.5: 5.4, CO2: 430 ppm, VOC: 65 ppb)."
         }
 
+    elif scenario == "HVAC_FILTER_FAILURE":
+        # Gradual PM2.5 + PM10 + Humidity rise, stable CO2 & VOC (v2.0 Signature 3)
+        payload = TelemetryPayload(
+            device_id=dev_id,
+            timestamp=now,
+            pm2_5=24.5,
+            pm10=36.0,
+            co2=590.0,
+            voc=110.0,
+            temperature=23.0,
+            humidity=58.5,
+            pressure=1013.0
+        )
+        await ingest_telemetry(payload, db)
+        return {
+            "status": "success",
+            "scenario": scenario,
+            "device_id": dev_id,
+            "message": "Injected HVAC Filter Failure event (PM2.5: 24.5, PM10: 36.0, Humidity: 58.5%)."
+        }
+
+    elif scenario == "HIGH_OCCUPANCY":
+        # Concurrent CO2 + VOC + Noise (v2.0 Signature)
+        payload = TelemetryPayload(
+            device_id=dev_id,
+            timestamp=now,
+            pm2_5=12.0,
+            pm10=18.0,
+            co2=1450.0,
+            voc=340.0,
+            temperature=24.2,
+            humidity=51.0,
+            pressure=1012.8,
+            noise_level=74.0
+        )
+        await ingest_telemetry(payload, db)
+        return {
+            "status": "success",
+            "scenario": scenario,
+            "device_id": dev_id,
+            "message": "Injected High Occupancy Gathering event (CO2: 1450 ppm, VOC: 340 ppb, Noise: 74 dB)."
+        }
+
+    elif scenario == "MATERIAL_OFF_GASSING":
+        # v3.0 Formaldehyde off-gassing from furniture/paint (HCHO > 0.08 ppm, VOC elevation, normal PM & CO2)
+        payload = TelemetryPayload(
+            device_id=dev_id,
+            timestamp=now,
+            pm2_5=8.5,
+            pm10=12.0,
+            co2=560.0,
+            voc=420.0,
+            hcho=0.115,  # Above WHO 0.08 ppm limit
+            temperature=23.5,
+            humidity=50.0,
+            pressure=1013.25
+        )
+        await ingest_telemetry(payload, db)
+        return {
+            "status": "success",
+            "scenario": scenario,
+            "device_id": dev_id,
+            "message": "Injected Material Off-Gassing event (HCHO: 0.115 ppm, VOC: 420 ppb, clean PM2.5 & CO2)."
+        }
+
+    elif scenario == "WILDFIRE_SMOKE":
+        # v3.0 Wildfire smoke envelope infiltration (High PM2.5, coarse PM10, outdoor pollution)
+        payload = TelemetryPayload(
+            device_id=dev_id,
+            timestamp=now,
+            pm2_5=82.0,
+            pm10=115.0,
+            co2=580.0,
+            voc=110.0,
+            temperature=20.0,
+            humidity=38.0,
+            pressure=1003.0
+        )
+        await ingest_telemetry(payload, db)
+        return {
+            "status": "success",
+            "scenario": scenario,
+            "device_id": dev_id,
+            "message": "Injected Wildfire Smoke Infiltration event (Indoor PM2.5: 82 µg/m³, PM10: 115 µg/m³, Pressure: 1003 hPa)."
+        }
+
+    elif scenario == "WEATHER_INVERSION":
+        # Low barometric pressure + PM2.5 elevation
+        payload = TelemetryPayload(
+            device_id=dev_id,
+            timestamp=now,
+            pm2_5=38.0,
+            pm10=52.0,
+            co2=620.0,
+            voc=120.0,
+            temperature=19.5,
+            humidity=68.0,
+            pressure=1003.5
+        )
+        await ingest_telemetry(payload, db)
+        return {
+            "status": "success",
+            "scenario": scenario,
+            "device_id": dev_id,
+            "message": "Injected Weather Inversion & Smog event (Pressure: 1003.5 hPa, PM2.5: 38 µg/m³)."
+        }
+
     elif scenario == "OFFLINE_BUFFER_BURST":
         # Simulates firmware reconnecting after Wi-Fi drop and draining 8 buffered records
         results = []

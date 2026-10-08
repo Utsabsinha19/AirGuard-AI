@@ -59,8 +59,9 @@ class MQTTTelemetrySubscriber:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.is_connected = True
-            print(f"[MQTT] Connected successfully. Subscribing to: {settings.MQTT_TELEMETRY_TOPIC}")
+            print(f"[MQTT] Connected successfully. Subscribing to: {settings.MQTT_TELEMETRY_TOPIC} and airguard/v1/devices/+/telemetry")
             client.subscribe(settings.MQTT_TELEMETRY_TOPIC)
+            client.subscribe("airguard/v1/devices/+/telemetry")
         else:
             print(f"[MQTT] Connection failed with code: {rc}")
 
@@ -73,18 +74,8 @@ class MQTTTelemetrySubscriber:
             payload_str = msg.payload.decode("utf-8")
             data = json.loads(payload_str)
 
-            # Extract fields expected by FR-3.3
-            parsed_payload = TelemetryPayload(
-                device_id=data.get("device_id", "AG-001"),
-                timestamp=datetime.fromisoformat(data["timestamp"]) if "timestamp" in data else datetime.utcnow(),
-                pm2_5=float(data.get("pm2_5", 0.0)),
-                pm10=float(data.get("pm10", 0.0)) if "pm10" in data else None,
-                co2=float(data.get("co2", 450.0)),
-                voc=float(data.get("voc", 100.0)),
-                temperature=float(data.get("temperature", 22.0)),
-                humidity=float(data.get("humidity", 45.0)),
-                pressure=float(data.get("pressure", 1013.25))
-            )
+            # Extract fields with v2.0 nested metrics support
+            parsed_payload = TelemetryPayload.model_validate(data)
 
             # Schedule async database ingestion in event loop
             if self.loop and self.loop.is_running():

@@ -75,8 +75,8 @@ export const ActionTracker: React.FC<ActionTrackerProps> = ({
               </div>
             </div>
 
-            {/* Metrics: Initial -> Current -> Target */}
-            <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+            {/* Metrics: Initial -> Current -> Target + Live Decay Rates (Section 4.2) */}
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
               <div>
                 <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block" }}>Initial AQI</span>
                 <span className="mono-num" style={{ fontSize: "18px", fontWeight: "700", color: "#f87171" }}>
@@ -97,6 +97,24 @@ export const ActionTracker: React.FC<ActionTrackerProps> = ({
                   {activeAction.target_aqi}
                 </span>
               </div>
+
+              {activeAction.co2_decay_rate !== undefined && activeAction.co2_decay_rate !== null && (
+                <div style={{ background: "rgba(0,0,0,0.3)", padding: "4px 8px", borderRadius: "8px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block" }}>CO₂ Decay Rate</span>
+                  <span className="mono-num" style={{ fontSize: "14px", fontWeight: "700", color: "#a855f7" }}>
+                    {activeAction.co2_decay_rate > 0 ? `-${activeAction.co2_decay_rate}` : activeAction.co2_decay_rate} ppm/min
+                  </span>
+                </div>
+              )}
+
+              {activeAction.pm25_decay_rate !== undefined && activeAction.pm25_decay_rate !== null && (
+                <div style={{ background: "rgba(0,0,0,0.3)", padding: "4px 8px", borderRadius: "8px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block" }}>PM2.5 Decay Rate</span>
+                  <span className="mono-num" style={{ fontSize: "14px", fontWeight: "700", color: "#06b6d4" }}>
+                    {activeAction.pm25_decay_rate > 0 ? `-${activeAction.pm25_decay_rate}` : activeAction.pm25_decay_rate} µg/m³/min
+                  </span>
+                </div>
+              )}
 
               <button
                 onClick={() => onResolveAction(activeAction.id)}

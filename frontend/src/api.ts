@@ -6,6 +6,11 @@ import type {
   AnomalyDiagnosis,
   AlertItem,
   RemediationAction,
+  ActuatorDevice,
+  ActuationLog,
+  UserHealthProfile,
+  ExposureMetrics,
+  CrossRoomDiffusionResponse,
 } from "./types";
 
 const API_BASE = "http://127.0.0.1:8000/api";
@@ -130,4 +135,95 @@ export async function triggerSimulatorScenario(
 
 export function getExportCSVUrl(deviceId: string): string {
   return `${API_BASE}/telemetry/export/${deviceId}`;
+}
+
+// ==========================================
+// v3.0 Actuation & Matter API
+// ==========================================
+
+export async function fetchActuators(): Promise<ActuatorDevice[]> {
+  const res = await fetch(`${API_BASE}/actuation/devices`);
+  if (!res.ok) throw new Error("Failed to fetch actuators");
+  return res.json();
+}
+
+export async function controlActuator(
+  actuatorId: string,
+  command: string,
+  speedPct = 100,
+  source = "DASHBOARD_UI",
+  reason = "User manual trigger"
+): Promise<ActuatorDevice> {
+  const res = await fetch(`${API_BASE}/actuation/control`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actuator_id: actuatorId,
+      command,
+      speed_pct: speedPct,
+      source,
+      reason,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to control actuator");
+  return res.json();
+}
+
+export async function fetchActuationLogs(actuatorId?: string, limit = 50): Promise<ActuationLog[]> {
+  const query = actuatorId ? `?actuator_id=${actuatorId}&limit=${limit}` : `?limit=${limit}`;
+  const res = await fetch(`${API_BASE}/actuation/logs${query}`);
+  if (!res.ok) throw new Error("Failed to fetch actuation logs");
+  return res.json();
+}
+
+export async function evaluateActuation(deviceId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/actuation/evaluate/${deviceId}`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to evaluate actuation");
+  return res.json();
+}
+
+// ==========================================
+// v3.0 Health Exposure & Risk API
+// ==========================================
+export async function fetchUserProfiles(): Promise<UserHealthProfile[]> {
+  const res = await fetch(`${API_BASE}/health/profiles`);
+  if (!res.ok) throw new Error("Failed to fetch user profiles");
+  return res.json();
+}
+
+export async function fetchExposureMetrics(userId = "user_default"): Promise<ExposureMetrics> {
+  const res = await fetch(`${API_BASE}/health/exposure/${userId}`);
+  if (!res.ok) throw new Error("Failed to fetch exposure metrics");
+  return res.json();
+}
+
+export async function updateHealthProfile(
+  profile: Partial<UserHealthProfile> & { user_id: string }
+): Promise<UserHealthProfile> {
+  const res = await fetch(`${API_BASE}/health/profile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (!res.ok) throw new Error("Failed to update health profile");
+  return res.json();
+}
+
+// ==========================================
+// v3.0 Spatio-Temporal Diffusion & Federated Sync
+// ==========================================
+export async function fetchCrossRoomDiffusion(): Promise<CrossRoomDiffusionResponse> {
+  const res = await fetch(`${API_BASE}/predictions/diffusion/cross-room`);
+  if (!res.ok) throw new Error("Failed to fetch cross room diffusion");
+  return res.json();
+}
+
+export async function federatedCalibrateDevice(
+  deviceId: string
+): Promise<{ status: string; zero_point_reference_pm2_5: number; sync_timestamp: string }> {
+  const res = await fetch(`${API_BASE}/devices/${deviceId}/federated-calibrate`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to perform federated calibration");
+  return res.json();
 }

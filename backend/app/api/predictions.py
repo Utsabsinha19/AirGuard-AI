@@ -20,7 +20,8 @@ from backend.app.schemas import (
     PredictionResponse,
     HorizonPrediction,
     MultiModelComparisonResponse,
-    ModelBenchmarkItem
+    ModelBenchmarkItem,
+    CrossRoomDiffusionResponse
 )
 from backend.app.ml.predictor_baseline import baseline_predictor
 from backend.app.ml.predictor_neural import neural_predictor
@@ -142,3 +143,27 @@ async def compare_all_models(device_id: str, db: AsyncSession = Depends(get_db))
         generated_at=datetime.utcnow(),
         models=benchmark_items
     )
+
+
+@router.get("/diffusion/cross-room", response_model=CrossRoomDiffusionResponse)
+async def get_cross_room_diffusion(db: AsyncSession = Depends(get_db)):
+    """
+    Spatio-Temporal Graph Neural Network (ST-GNN) cross-room pollutant diffusion forecast (v3.0 Section 2.1).
+    Models indoor rooms as spatial graph nodes and calculates 15m, 30m, and 60m dispersion vectors.
+    """
+    from backend.app.ml.st_gnn import st_gnn
+
+    # Query latest readings for each active device/room
+    query = await db.execute(
+        select(Device.room, Telemetry.calibrated_pm2_5)
+        .join(Telemetry, Device.id == Telemetry.device_id)
+        .order_by(desc(Telemetry.timestamp))
+    )
+    rows = query.all()
+    room_readings = {}
+    for room, pm25 in rows:
+        if room not in room_readings:
+            room_readings[room] = pm25
+
+    diffusion_data = st_gnn.predict_diffusion(room_readings)
+    return CrossRoomDiffusionResponse(**diffusion_data)

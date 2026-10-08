@@ -66,3 +66,20 @@ def test_clean_baseline():
     diag = anomaly_engine.detect_anomalies_and_diagnose(reading)
     assert diag["is_anomaly"] is False
     assert diag["severity"] == "NORMAL"
+
+
+def test_hvac_filter_failure_diagnosis():
+    # v2.0 Signature: Gradual PM2.5 + PM10 + elevated Humidity with clean VOC & CO2
+    reading = {
+        "pm2_5": 28.0,
+        "pm10": 42.0,
+        "co2": 580.0,
+        "voc": 95.0,
+        "temperature": 22.0,
+        "humidity": 65.0
+    }
+    diag = anomaly_engine.detect_anomalies_and_diagnose(reading)
+    assert diag["is_anomaly"] is True
+    assert diag["root_cause_code"] == "HVAC_FILTER_FAILURE"
+    assert "clean air purifier / HVAC filters" in diag["recommendation"]
+

@@ -107,6 +107,13 @@ async def resolve_action(action_id: int, db: AsyncSession = Depends(get_db)):
     initial_delta = max(1, action.initial_aqi - action.target_aqi)
     action.efficacy_score = round(min(100.0, max(0.0, (reduction / initial_delta) * 100.0)), 1)
 
+    duration_mins = max(0.1, duration)
+    co2_delta = action.initial_co2 - (action.current_co2 or action.initial_co2)
+    pm_delta = action.initial_pm2_5 - (action.current_pm2_5 or action.initial_pm2_5)
+    action.co2_decay_rate = round(co2_delta / duration_mins, 2)
+    action.pm25_decay_rate = round(pm_delta / duration_mins, 2)
+    action.recovery_message = f"CO2 returned to {int(action.current_co2 or 700)} ppm in {action.recovery_duration_mins} minutes (Decay rate: {action.co2_decay_rate} ppm/min)"
+
     await db.commit()
     await db.refresh(action)
     return action

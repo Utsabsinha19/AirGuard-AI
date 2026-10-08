@@ -1,6 +1,6 @@
 import React from "react";
 import type { Device, AlertItem } from "../types";
-import { Bell, Cpu, Radio, Sparkles, Sliders, Download, Map } from "lucide-react";
+import { Bell, Cpu, Radio, Sparkles, Sliders, Download, Map, Zap, Network, HeartPulse, RefreshCw } from "lucide-react";
 import { getExportCSVUrl } from "../api";
 
 interface NavbarProps {
@@ -18,6 +18,13 @@ interface NavbarProps {
   onOpenCalibration: () => void;
   showFloorplan: boolean;
   onToggleFloorplan: () => void;
+  showActuation: boolean;
+  onToggleActuation: () => void;
+  showDiffusion: boolean;
+  onToggleDiffusion: () => void;
+  showHealth: boolean;
+  onToggleHealth: () => void;
+  onFederatedCalibrate: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,6 +42,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCalibration,
   showFloorplan,
   onToggleFloorplan,
+  showActuation,
+  onToggleActuation,
+  showDiffusion,
+  onToggleDiffusion,
+  showHealth,
+  onToggleHealth,
+  onFederatedCalibrate,
 }) => {
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
@@ -63,11 +77,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 AirGuard AI
               </h1>
               <span className="glass-pill" style={{ fontSize: "11px", fontWeight: "600", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
-                v1.3.0 Pro
+                v3.0.0 Pro Enterprise
               </span>
             </div>
             <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-              Personal Environmental Intelligence & Deep Sequence Predictor
+              Autonomous Matter Actuation, TinyML Edge & ST-GNN Spatial Intelligence
             </p>
           </div>
 
@@ -164,6 +178,54 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Floorplan</span>
           </button>
 
+          {/* v3.0 Smart Actuation Hub Toggle */}
+          <button
+            onClick={onToggleActuation}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showActuation ? "rgba(16, 185, 129, 0.2)" : undefined,
+              borderColor: showActuation ? "#10b981" : undefined
+            }}
+            title="Toggle Closed-Loop Matter & Home Assistant Smart Actuators"
+          >
+            <Zap size={15} color="#10b981" />
+            <span>Actuation Hub</span>
+          </button>
+
+          {/* v3.0 ST-GNN Diffusion Studio Toggle */}
+          <button
+            onClick={onToggleDiffusion}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showDiffusion ? "rgba(168, 85, 247, 0.2)" : undefined,
+              borderColor: showDiffusion ? "#a855f7" : undefined
+            }}
+            title="Toggle Cross-Room Spatio-Temporal Graph Diffusion"
+          >
+            <Network size={15} color="#a855f7" />
+            <span>Diffusion Studio</span>
+          </button>
+
+          {/* v3.0 Personal Health Exposure Toggle */}
+          <button
+            onClick={onToggleHealth}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showHealth ? "rgba(244, 63, 94, 0.2)" : undefined,
+              borderColor: showHealth ? "#f43f5e" : undefined
+            }}
+            title="Toggle Personal Inhalation Exposure & Health Risk Profiling"
+          >
+            <HeartPulse size={15} color="#f43f5e" />
+            <span>Health Risk</span>
+          </button>
+
           {/* Multi-Model Benchmark Comparison Button */}
           <button
             onClick={onOpenModelComparison}
@@ -172,7 +234,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             title="Compare GBM, LSTM, GRU, and Temporal CNN benchmarks"
           >
             <Cpu size={15} color="#a855f7" />
-            <span>Model Benchmarks</span>
+            <span>Benchmarks</span>
+          </button>
+
+          {/* Federated Calibration Button */}
+          <button
+            onClick={onFederatedCalibrate}
+            className="btn-secondary"
+            style={{ fontSize: "12px", padding: "7px 12px" }}
+            title="Trigger federated baseline cross-calibration across fleet"
+          >
+            <RefreshCw size={14} color="#38bdf8" />
+            <span>Federated Sync</span>
           </button>
 
           {/* Sensor Calibration Button */}

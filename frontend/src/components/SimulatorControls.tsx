@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Cpu, X, Flame, Wind, Sparkles, WifiOff, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Cpu, X, Flame, Wind, Sparkles, WifiOff, RefreshCw, CheckCircle2, ShieldAlert, Users, CloudRain } from "lucide-react";
 import { triggerSimulatorScenario } from "../api";
 
 interface SimulatorControlsProps {
@@ -21,8 +21,24 @@ export const SimulatorControls: React.FC<SimulatorControlsProps> = ({
 
   const scenarios = [
     {
+      id: "MATERIAL_OFF_GASSING",
+      name: "Material Off-Gassing (v3.0)",
+      targetRoom: "Bedroom (AG-001)",
+      desc: "Severe HCHO surge to 0.145 ppm & VOC Index 420. Triggers off-gassing remediation.",
+      icon: <Sparkles size={18} color="#f43f5e" />,
+      device: "AG-001",
+    },
+    {
+      id: "WILDFIRE_SMOKE",
+      name: "Wildfire Smoke Infiltration (v3.0)",
+      targetRoom: "Living Room (AG-002)",
+      desc: "Ultrafine PM0.3 (48 µg/m³) & PM2.5 (115 µg/m³) smoke plume. Triggers sealed HVAC recirculation.",
+      icon: <Flame size={18} color="#ea580c" />,
+      device: "AG-002",
+    },
+    {
       id: "COOKING_SMOKE",
-      name: "Cooking & Frying Smoke",
+      name: "Cooking & Frying Smoke (v2.0)",
       targetRoom: "Kitchen (AG-003)",
       desc: "Simultaneous PM2.5 (68 µg/m³) and VOC (485 ppb) surge. Triggers culinary diagnosis.",
       icon: <Flame size={18} color="#f97316" />,
@@ -30,19 +46,43 @@ export const SimulatorControls: React.FC<SimulatorControlsProps> = ({
     },
     {
       id: "POOR_VENTILATION",
-      name: "Poor Ventilation / CO₂ Buildup",
+      name: "Occupancy Stagnation (v2.0)",
       targetRoom: "Bedroom (AG-001)",
       desc: "CO2 rises to 1580 ppm alongside metabolic VOCs. Triggers stagnant air warning.",
       icon: <Wind size={18} color="#a855f7" />,
       device: "AG-001",
     },
     {
+      id: "HVAC_FILTER_FAILURE",
+      name: "HVAC / Filter Failure (v2.0)",
+      targetRoom: "Living Room (AG-002)",
+      desc: "Gradual rise in PM2.5 (24.5), PM10 (36), and humidity (58.5%). Triggers filter alert.",
+      icon: <ShieldAlert size={18} color="#eab308" />,
+      device: "AG-002",
+    },
+    {
       id: "CHEMICAL_CLEANER",
-      name: "Chemical Cleaner / Solvents",
+      name: "Volatile Chemical Event (v2.0)",
       targetRoom: "Office (AG-004)",
       desc: "Isolated sharp spike in VOC (720 ppb) while particulate levels remain baseline.",
       icon: <Sparkles size={18} color="#ec4899" />,
       device: "AG-004",
+    },
+    {
+      id: "HIGH_OCCUPANCY",
+      name: "High Occupancy Gathering (v2.0)",
+      targetRoom: "Living Room (AG-002)",
+      desc: "Concurrent CO2 (1450 ppm), metabolic VOC (340 ppb), and acoustic noise (74 dB).",
+      icon: <Users size={18} color="#06b6d4" />,
+      device: "AG-002",
+    },
+    {
+      id: "WEATHER_INVERSION",
+      name: "Weather Inversion & Smog (v2.0)",
+      targetRoom: "Outdoor (AG-005)",
+      desc: "Barometric drop to 1003.5 hPa accompanied by fine particulate smog (38 µg/m³).",
+      icon: <CloudRain size={18} color="#6366f1" />,
+      device: "AG-005",
     },
     {
       id: "OPEN_WINDOW",
@@ -54,7 +94,7 @@ export const SimulatorControls: React.FC<SimulatorControlsProps> = ({
     },
     {
       id: "OFFLINE_BUFFER_BURST",
-      name: "Wi-Fi Outage & Buffer Drain (FR-2.3)",
+      name: "Wi-Fi Outage & Buffer Drain (v2.0)",
       targetRoom: "Current Selected Room",
       desc: "Simulates network reconnection: bursts 8 buffered records stored during outage.",
       icon: <WifiOff size={18} color="#38bdf8" />,

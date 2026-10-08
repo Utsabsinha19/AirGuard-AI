@@ -41,6 +41,9 @@ class AnomalyEngine:
         pressure = float(current_reading.get("pressure", 1013.25) or 1013.25)
         noise = float(current_reading.get("noise_level", 42.0) or 42.0)
         light = float(current_reading.get("ambient_light", 150.0) or 150.0)
+        hcho = float(current_reading.get("hcho", 0.0) or 0.0)
+        outdoor_pm25 = float(current_reading.get("outdoor_pm25", 0.0) or 0.0)
+        flow_rate = float(current_reading.get("flow_rate", 100.0) or 100.0)
 
         # Standard z-scores relative to baseline
         z_pm25 = max(0.0, (pm25 - baselines["pm2_5"]["median"]) / max(1.0, baselines["pm2_5"]["std"]))
@@ -48,15 +51,16 @@ class AnomalyEngine:
         z_voc = max(0.0, (voc - baselines["voc"]["median"]) / max(1.0, baselines["voc"]["std"]))
         z_noise = max(0.0, (noise - baselines["noise_level"]["median"]) / max(1.0, baselines["noise_level"]["std"]))
 
-        is_pm_elevated = pm25 > 25.0 or z_pm25 > 2.0
-        is_co2_elevated = co2 > 950.0 or z_co2 > 2.0
-        is_voc_elevated = voc > 280.0 or z_voc > 2.0
-        is_noise_elevated = noise > 60.0 or z_noise > 2.0
+        is_pm_elevated = pm25 > 25.0 or (pm25 > 15.0 and z_pm25 > 2.0)
+        is_co2_elevated = co2 > 950.0 or (co2 > 800.0 and z_co2 > 2.0)
+        is_voc_elevated = voc > 280.0 or (voc > 200.0 and z_voc > 2.0)
+        is_hcho_elevated = hcho > 0.08
+        is_noise_elevated = noise > 60.0 or (noise > 50.0 and z_noise > 2.0)
         is_barometric_drop = pressure < 1006.0
 
         # Composite anomaly score (0.0 to 100.0)
-        anomaly_score = min(100.0, (z_pm25 * 14.0 + z_co2 * 12.0 + z_voc * 12.0 + (z_noise * 4.0 if is_noise_elevated else 0.0)))
-        is_anomaly = anomaly_score >= 35.0 or is_pm_elevated or is_co2_elevated or is_voc_elevated
+        anomaly_score = min(100.0, (z_pm25 * 14.0 + z_co2 * 12.0 + z_voc * 12.0 + (z_noise * 4.0 if is_noise_elevated else 0.0) + (35.0 if is_hcho_elevated else 0.0)))
+        is_anomaly = anomaly_score >= 35.0 or is_pm_elevated or is_co2_elevated or is_voc_elevated or is_hcho_elevated
 
         # Severity determination
         if anomaly_score < 25.0:
@@ -70,9 +74,10 @@ class AnomalyEngine:
         else:
             severity = "CRITICAL"
 
-        # Context-aware root-cause classification
+        # Context-aware root-cause classification (v2.0 & v3.0 Multi-Sensor Matrix)
         root_cause_code, root_cause_title, description, recommendation = self._classify_root_cause(
             pm25=pm25,
+            pm10=pm10,
             co2=co2,
             voc=voc,
             temp=temp,
@@ -80,9 +85,13 @@ class AnomalyEngine:
             pressure=pressure,
             noise=noise,
             light=light,
+            hcho=hcho,
+            outdoor_pm25=outdoor_pm25,
+            flow_rate=flow_rate,
             is_pm_elevated=is_pm_elevated,
             is_co2_elevated=is_co2_elevated,
             is_voc_elevated=is_voc_elevated,
+            is_hcho_elevated=is_hcho_elevated,
             is_noise_elevated=is_noise_elevated,
             is_barometric_drop=is_barometric_drop,
             z_pm25=z_pm25,
@@ -93,7 +102,8 @@ class AnomalyEngine:
         sensor_contributions = {
             "PM2.5": round(min(100.0, z_pm25 * 25.0), 1),
             "CO2": round(min(100.0, z_co2 * 25.0), 1),
-            "VOC": round(min(100.0, z_voc * 25.0), 1)
+            "VOC": round(min(100.0, z_voc * 25.0), 1),
+            "HCHO": round(min(100.0, (hcho / 0.08) * 50.0), 1) if hcho > 0 else 0.0
         }
 
         return {
@@ -107,13 +117,15 @@ class AnomalyEngine:
             "sensor_contributions": sensor_contributions,
             "metrics": {
                 "pm2_5": pm25,
+                "pm10": pm10,
                 "co2": co2,
                 "voc": voc,
                 "temperature": temp,
                 "humidity": humidity,
                 "pressure": pressure,
-                "noise_level": noise,
                 "ambient_light": light,
+                "noise_level": noise,
+                "hcho": hcho,
                 "z_pm2_5": round(z_pm25, 2),
                 "z_co2": round(z_co2, 2),
                 "z_voc": round(z_voc, 2)
@@ -125,7 +137,7 @@ class AnomalyEngine:
             return self.default_baselines
 
         baselines = {}
-        for key in ["pm2_5", "pm10", "co2", "voc", "temperature", "humidity", "pressure", "noise_level", "ambient_light"]:
+        for key in ["pm2_5", "pm10", "co2", "voc", "temperature", "humidity", "pressure", "noise_level", "ambient_light", "hcho"]:
             values = [float(r[key]) for r in historical_readings if key in r and r[key] is not None]
             if len(values) >= 5:
                 arr = np.array(values)
@@ -140,6 +152,7 @@ class AnomalyEngine:
     def _classify_root_cause(
         self,
         pm25: float,
+        pm10: float,
         co2: float,
         voc: float,
         temp: float,
@@ -147,21 +160,34 @@ class AnomalyEngine:
         pressure: float,
         noise: float,
         light: float,
+        hcho: float,
+        outdoor_pm25: float,
+        flow_rate: float,
         is_pm_elevated: bool,
         is_co2_elevated: bool,
         is_voc_elevated: bool,
+        is_hcho_elevated: bool,
         is_noise_elevated: bool,
         is_barometric_drop: bool,
         z_pm25: float,
         z_co2: float,
         z_voc: float
     ):
-        if not (is_pm_elevated or is_co2_elevated or is_voc_elevated):
+        if not (is_pm_elevated or is_co2_elevated or is_voc_elevated or is_hcho_elevated):
             return (
                 "CLEAN_STABLE",
                 "Atmosphere Optimal & Nominal",
                 "All environmental sensors are within safe baseline limits. No pollution sources detected.",
                 "Maintain normal room use; no action required."
+            )
+
+        # v3.0 Incident: Material Off-Gassing (HCHO > 0.08 ppm + VOC, Normal CO2 & PM2.5)
+        if (is_hcho_elevated or hcho > 0.08) and (not is_pm_elevated and not is_co2_elevated):
+            return (
+                "MATERIAL_OFF_GASSING",
+                "Chemical Off-gassing (New Furniture/Paint)",
+                f"Elevated Formaldehyde ({hcho:.3f} ppm) and volatile organic vapors ({voc} ppb) detected with normal CO2 and PM2.5 confirms chemical off-gassing from new furniture, carpeting, or building materials.",
+                "Trigger Continuous Mechanical Ventilation"
             )
 
         # Context Case A: Nighttime Smoldering Combustion (Light < 15 lux, high PM2.5)
@@ -182,6 +208,15 @@ class AnomalyEngine:
                 "Open multiple doors and windows to cross-ventilate and purge accumulated exhaled air."
             )
 
+        # v3.0 Incident: Wildfire Smoke Infiltration (PM2.5 >= 75 or outdoor_pm25 > 30, with PM10 surge or pressure drop)
+        if (pm25 >= 75.0 or outdoor_pm25 > 30.0) and pm10 > 45.0 and (outdoor_pm25 > 30.0 or is_barometric_drop or pm25 > 90.0):
+            return (
+                "WILDFIRE_SMOKE_INFILTRATION",
+                "Outdoor Smoke Infiltration",
+                f"Elevated indoor PM2.5 ({pm25} µg/m³) and PM10 ({pm10} µg/m³) coinciding with outdoor wildfire pollution ({outdoor_pm25} µg/m³) or atmospheric pressure drop confirms building envelope infiltration.",
+                "Seal Windows, Set HVAC to Recirculation, Max HEPA"
+            )
+
         # Context Case C: Weather Inversion / Frontal Storm Pressure Drop
         if is_pm_elevated and is_barometric_drop and not is_voc_elevated:
             return (
@@ -191,32 +226,50 @@ class AnomalyEngine:
                 "Keep windows tightly sealed and run standalone HEPA filtration continuously."
             )
 
-        # Standard Case 1: High PM2.5 and High VOC -> Cooking / Culinary smoke
+        # v2.0 / v3.0 Signature 1: Indoor Combustion (Sudden PM2.5 > 50 or elevated + VOC, Stable CO2)
         if is_pm_elevated and is_voc_elevated and (z_pm25 > 2.0 or pm25 > 35.0):
             return (
                 "COOKING_SMOKE",
-                "Culinary Activities / Frying Smoke",
-                f"Simultaneous surge in fine particulates (PM2.5: {pm25} µg/m³) and volatile organic vapors (VOC: {voc} ppb) strongly indicates frying, boiling oil, or high-heat cooking emissions.",
-                "Turn on kitchen exhaust range hood immediately and close interior room doors."
+                "Indoor Cooking, Frying, or Smoke Event",
+                f"Sudden surge in fine particulates (PM2.5: {pm25} µg/m³) and volatile vapors (VOC: {voc} ppb) with stable CO2 indicates indoor cooking, frying, or smoke emissions.",
+                "Activate Kitchen Exhaust & Max Air Purifier Speed"
             )
 
-        # Standard Case 2: High CO2 + High VOC (Normal PM) -> Poor Ventilation
+        # v2.0 / v3.0 Signature 2: Occupancy Stagnation (Rapid CO2 > 1200 + VOC, Stable PM2.5)
         if is_co2_elevated and is_voc_elevated and not is_pm_elevated:
             return (
                 "POOR_VENTILATION_OCCUPANCY",
-                "Inadequate Ventilation / High Occupancy",
-                f"Elevated CO2 ({int(co2)} ppm) alongside human metabolic VOC build-up ({voc} ppb) with clean particulate levels indicates prolonged closed-door occupancy.",
-                "Open windows across the room to create cross-ventilation, or increase HVAC fresh air intake damper."
+                "Poor Indoor Ventilation / High Room Occupancy",
+                f"Elevated CO2 ({int(co2)} ppm) alongside metabolic VOC accumulation ({voc} ppb) with stable particulate levels indicates inadequate ventilation.",
+                "Open Automated Smart Windows or HVAC Damper"
             )
 
-        # Standard Case 3: High VOC alone -> Chemical Solvent / Unoccupied Off-Gassing
+        # v3.0 Signature 5: HVAC Filter Saturation / Flow Rate Reduction
+        if (is_pm_elevated or pm25 > 20.0) and flow_rate < 75.0 and not is_voc_elevated and not is_co2_elevated:
+            return (
+                "HVAC_FILTER_FAILURE",
+                "Filter Efficiency Degradation",
+                f"Persistent particulate baseline shift (PM2.5: {pm25} µg/m³) with reduced air handler flow rate ({flow_rate}%) indicates saturated filtration media.",
+                "Dispatch Replacement Filter Alert to Mobile App"
+            )
+
+        # v2.0 Signature 3: HVAC / Filter Failure (Gradual PM2.5 + PM10 + Humidity, Stable CO2/VOC)
+        if (is_pm_elevated or pm25 > 20.0) and (pm10 > 25.0) and humidity > 52.0 and not is_voc_elevated and not is_co2_elevated:
+            return (
+                "HVAC_FILTER_FAILURE",
+                "HVAC Filter Saturation or Outdoor Infiltration",
+                f"Gradual rise in PM2.5 ({pm25} µg/m³) and PM10 ({pm10} µg/m³) accompanied by humidity ({humidity}%) indicates saturated HVAC filtration or envelope leakage.",
+                "Inspect and clean air purifier / HVAC filters"
+            )
+
+        # v2.0 Signature 4: Volatile Chemical Event (Spike in VOCs, Normal CO2 & PM2.5)
         if is_voc_elevated and not is_pm_elevated and not is_co2_elevated:
             unocc_text = " (Silent room indicates unattended off-gassing container)" if noise < 42.0 else ""
             return (
                 "CHEMICAL_SOLVENT_EVAPORATION",
-                "Chemical Cleaners / Aerosol / Solvent Off-gassing",
-                f"Sharp spike in VOC ({voc} ppb) with baseline CO2 and PM2.5 confirms gaseous off-gassing from cleaning agents, paints, or disinfectants.{unocc_text}",
-                "Identify and seal active chemical containers; open windows to purge chemical vapors."
+                "Household Cleaning Chemical or Solvent Use",
+                f"Sharp spike in VOCs ({voc} ppb) with normal CO2 and PM2.5 confirms household chemical cleaner, solvent, or paint off-gassing.{unocc_text}",
+                "Increase air circulation and avoid enclosed exposure"
             )
 
         # Standard Case 4: High PM2.5 alone -> Outdoor Infiltration / Dust

@@ -15,6 +15,7 @@
 #include "sensors.h"
 #include "display.h"
 #include "offline_queue.h"
+#include "tinyml_infer.h"
 
 static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
@@ -22,6 +23,7 @@ static PubSubClient mqttClient(espClient);
 static SensorSuite sensors;
 static FeedbackUI ui;
 static OfflineQueue offlineQueue;
+static TinyMLEdgeClassifier tinyml;
 
 static unsigned long lastSampleTime = 0;
 static unsigned long lastReconnectAttempt = 0;
@@ -55,9 +57,9 @@ void reconnectMQTT() {
                 Serial.println(" CONNECTED!");
                 mqttClient.subscribe(MQTT_TOPIC_SUB);
 
-                // Drain accumulated offline flash/RAM buffer (FR-2.3)
+                // Drain accumulated offline flash/RAM buffer (FR-2.3, Section 1.2)
                 if (offlineQueue.getPendingCount() > 0) {
-                    offlineQueue.flushToMQTT(mqttClient, MQTT_TOPIC_PUB);
+                    offlineQueue.flushToMQTT(mqttClient, MQTT_TOPIC_PUB_V3);
                 }
             } else {
                 Serial.printf(" FAILED, rc=%d. Retrying.\n", mqttClient.state());
@@ -66,16 +68,49 @@ void reconnectMQTT() {
     }
 }
 
-String serializeTelemetry(const SensorReadings &r) {
+String serializeTelemetry(const SensorReadings &r, const TinyMLInferenceResult &mlRes) {
     JsonDocument doc;
     doc["device_id"]        = DEVICE_ID;
-    doc["room"]             = DEVICE_ROOM;
+    doc["location"]         = DEVICE_ROOM;
+    doc["zone"]             = DEVICE_ZONE;
+    doc["firmware_version"] = FIRMWARE_VERSION;
     doc["uptime_ms"]        = millis();
+
+    // v3.0 Nested metrics format
+    JsonObject metrics      = doc["metrics"].to<JsonObject>();
+    metrics["pm0_3"]        = r.pm0_3;
+    metrics["pm1_0"]        = r.pm1_0;
+    metrics["pm2_5"]        = r.pm2_5;
+    metrics["pm10"]         = r.pm10;
+    metrics["co2"]          = r.co2_ppm;
+    metrics["voc"]          = r.voc_ppb;
+    metrics["hcho"]         = r.hcho_ppm;
+    metrics["voc_index"]    = r.voc_index;
+    metrics["nox_index"]    = r.nox_index;
+    metrics["gas_resistance"] = r.gas_resistance_ohms;
+    metrics["temperature"]  = r.temperature_c;
+    metrics["humidity"]     = r.humidity_rh;
+    metrics["pressure"]     = r.pressure_hpa;
+    metrics["battery_pct"]  = r.battery_pct;
+
+    // TinyML Edge Diagnostics
+    JsonObject edgeML       = doc["edge_tinyml"].to<JsonObject>();
+    edgeML["anomaly"]       = mlRes.is_anomaly;
+    edgeML["anomaly_score"] = mlRes.anomaly_score;
+    edgeML["diagnosed_cause"] = mlRes.diagnosed_cause;
+    edgeML["relay_active"]  = mlRes.trigger_local_relay;
+
+    // Top-level fields for flat backward compatibility
+    doc["pm0_3"]            = r.pm0_3;
     doc["pm1_0"]            = r.pm1_0;
     doc["pm2_5"]            = r.pm2_5;
     doc["pm10"]             = r.pm10;
     doc["co2"]              = r.co2_ppm;
     doc["voc"]              = r.voc_ppb;
+    doc["hcho"]             = r.hcho_ppm;
+    doc["voc_index"]        = r.voc_index;
+    doc["nox_index"]        = r.nox_index;
+    doc["gas_resistance"]   = r.gas_resistance_ohms;
     doc["temperature"]      = r.temperature_c;
     doc["humidity"]         = r.humidity_rh;
     doc["pressure"]         = r.pressure_hpa;
@@ -109,8 +144,12 @@ void setup() {
     Serial.begin(115200);
     delay(500);
     Serial.println("\n==========================================");
-    Serial.println("  AirGuard AI - Edge Node (v1.3 Expanded) ");
+    Serial.println("  AirGuard AI - Edge Node (v3.0-PRO)      ");
+    Serial.println("  TinyML On-Device + Matter Smart Relay   ");
     Serial.println("==========================================");
+
+    pinMode(RELAY_ACTUATOR_PIN, OUTPUT);
+    digitalWrite(RELAY_ACTUATOR_PIN, LOW);
 
     sensors.begin();
     ui.begin();
@@ -138,11 +177,31 @@ void loop() {
         lastSampleTime = currentMillis;
 
         SensorReadings readings = sensors.readAll();
-        String jsonPayload = serializeTelemetry(readings);
+
+        // v3.0 TinyML On-Device Edge Inference (< 15ms zero-latency)
+        TinyMLFeatures feat;
+        feat.pm2_5 = readings.pm2_5;
+        feat.pm10 = readings.pm10;
+        feat.co2 = readings.co2_ppm;
+        feat.voc = readings.voc_ppb;
+        feat.hcho = readings.hcho_ppm;
+        feat.temperature = readings.temperature_c;
+        feat.humidity = readings.humidity_rh;
+        feat.pressure = readings.pressure_hpa;
+
+        TinyMLInferenceResult mlRes = tinyml.predict(feat);
+
+        // Zero-latency local relay actuation without Wi-Fi round-trip
+        digitalWrite(RELAY_ACTUATOR_PIN, mlRes.trigger_local_relay ? HIGH : LOW);
+
+        String jsonPayload = serializeTelemetry(readings, mlRes);
 
         bool published = false;
         if (mqttClient.connected()) {
-            published = mqttClient.publish(MQTT_TOPIC_PUB, jsonPayload.c_str());
+            published = mqttClient.publish(MQTT_TOPIC_PUB_V3, jsonPayload.c_str());
+            if (!published) {
+                published = mqttClient.publish(MQTT_TOPIC_PUB_V2, jsonPayload.c_str());
+            }
         }
 
         if (!published) {
@@ -162,13 +221,15 @@ void loop() {
             offlineQueue.getPendingCount()
         );
 
-        if (readings.pm2_5 > 55.0 || readings.co2_ppm > 1600 || readings.voc_ppb > 600) {
+        if (mlRes.is_anomaly || readings.pm2_5 > 55.0 || readings.co2_ppm > 1600 || readings.voc_ppb > 600) {
             ui.triggerAlarm(false);
         }
 
-        // Section 2.1 Power Optimization: if operating on low battery (< 15%), enter deep sleep
-        if (readings.battery_pct < 15 && readings.battery_voltage < 3.4) {
-            Serial.printf("[Power] Critical battery (%d%%). Entering deep sleep for %ds...\n", readings.battery_pct, BATTERY_SAVER_SLEEP_S);
+        // Section 1.3: Interrupt-driven threshold wakeups & adaptive deep sleep
+        if (readings.battery_pct < 25) {
+            Serial.printf("[Power] Standalone battery power (%d%%). Enabling hazard interrupt on PIN %d & sleeping %ds...\n",
+                          readings.battery_pct, PIN_HAZARD_INT, BATTERY_SAVER_SLEEP_S);
+            esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_HAZARD_INT, 1);
             esp_sleep_enable_timer_wakeup(BATTERY_SAVER_SLEEP_S * 1000000ULL);
             esp_deep_sleep_start();
         }

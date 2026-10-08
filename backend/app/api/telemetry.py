@@ -9,6 +9,8 @@ Enhanced with:
 from datetime import datetime
 import io
 import csv
+import math
+import numpy as np
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,8 +21,26 @@ from backend.app.schemas import TelemetryPayload, TelemetryResponse
 from backend.app.ml.calibration import calibrate_pm25, calibrate_voc, compute_comprehensive_aqi
 from backend.app.ml.anomaly_engine import anomaly_engine
 from backend.app.websocket_manager import ws_manager
+from backend.app.notifications.dispatcher import alert_dispatcher
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
+
+
+@router.post("/batch", response_model=List[TelemetryResponse])
+async def ingest_telemetry_batch(
+    payloads: List[TelemetryPayload],
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Ingests batched historical packets flushed from edge offline queues or SD cards
+    in chronological sequence (v2.0 Section 1.2, 3.2).
+    """
+    results = []
+    sorted_payloads = sorted(payloads, key=lambda p: p.timestamp or datetime.utcnow())
+    for p in sorted_payloads:
+        res = await ingest_telemetry(p, db)
+        results.append(res)
+    return results
 
 
 @router.post("/ingest", response_model=TelemetryResponse)
@@ -75,12 +95,18 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         voc=cal_voc
     )
 
-    # 4. Save Telemetry record with expanded metrics
+    # 4. Save Telemetry record with expanded metrics (v2.0 & v3.0 Next-Gen Suite)
     telemetry_record = Telemetry(
         device_id=payload.device_id,
         timestamp=ts,
         pm2_5=payload.pm2_5,
         pm10=payload.pm10 or (payload.pm2_5 * 1.4),
+        pm0_3=payload.pm0_3 or round(payload.pm2_5 * 0.25, 2),
+        pm1_0=payload.pm1_0 or round(payload.pm2_5 * 0.65, 2),
+        hcho=payload.hcho or 0.02,
+        voc_index=payload.voc_index or 100.0,
+        nox_index=payload.nox_index or 1.0,
+        gas_resistance=payload.gas_resistance or 52000.0,
         co2=payload.co2,
         voc=payload.voc,
         temperature=payload.temperature,
@@ -103,6 +129,7 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         "pm10": payload.pm10,
         "co2": payload.co2,
         "voc": cal_voc,
+        "hcho": telemetry_record.hcho,
         "temperature": payload.temperature,
         "humidity": payload.humidity,
         "pressure": payload.pressure,
@@ -125,29 +152,48 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         )
         db.add(anomaly_record)
 
-        alert_level = "CRITICAL" if diag["severity"] == "CRITICAL" else "WARNING"
+        routing = alert_dispatcher.evaluate_priority_and_channels(
+            aqi=aqi_result["aqi"],
+            co2=payload.co2,
+            pm25=cal_pm25,
+            severity=diag["severity"]
+        )
+
         alert_record = Alert(
             device_id=payload.device_id,
             timestamp=ts,
-            level=alert_level,
-            channel="DASHBOARD",
+            level=routing["priority"],
+            channel=routing["channels"][0],
+            channels=routing["channels_str"],
             title=f"{diag['root_cause_title']} ({payload.device_id})",
             message=diag["description"],
             recommendation=diag["recommendation"]
         )
         db.add(alert_record)
 
+        # Dispatch across multi-channel mediums (Section 3.3)
+        await alert_dispatcher.dispatch(
+            device_id=payload.device_id,
+            title=alert_record.title,
+            message=alert_record.message,
+            recommendation=alert_record.recommendation,
+            priority=routing["priority"],
+            channels=routing["channels"]
+        )
+
         await ws_manager.broadcast_alert({
             "id": 9999,
             "device_id": payload.device_id,
             "title": alert_record.title,
-            "level": alert_level,
+            "level": routing["priority"],
+            "channel": routing["channels"][0],
+            "channels": routing["channels_str"],
             "message": alert_record.message,
             "recommendation": alert_record.recommendation,
             "timestamp": ts.isoformat()
         })
 
-    # 6. Update Active Remediation Actions
+    # 6. Update Active Remediation Actions (Section 4.2 Closed-Loop Recovery Tracking)
     act_query = await db.execute(
         select(RemediationAction).where(
             RemediationAction.device_id == payload.device_id,
@@ -157,25 +203,60 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
     active_actions = act_query.scalars().all()
     for active_action in active_actions:
         active_action.current_aqi = aqi_result["aqi"]
-        if aqi_result["aqi"] <= active_action.target_aqi + 5:
+        active_action.current_co2 = payload.co2
+        active_action.current_pm2_5 = cal_pm25
+        duration = max(0.1, (ts - active_action.timestamp).total_seconds() / 60.0)
+        
+        # Calculate real-time linear decay rates (ppm/min and µg/m³/min)
+        co2_delta = active_action.initial_co2 - (payload.co2 or active_action.initial_co2)
+        pm_delta = active_action.initial_pm2_5 - (cal_pm25 or active_action.initial_pm2_5)
+        active_action.co2_decay_rate = round(co2_delta / duration, 2)
+        active_action.pm25_decay_rate = round(pm_delta / duration, 2)
+
+        # Section 3.2: Fit exponential decay curve: C(t) = C_ambient + (C0 - C_ambient) * e^(-k*t)
+        c_amb = 420.0 if active_action.initial_co2 > 800 else 8.0
+        c0 = active_action.initial_co2 if active_action.initial_co2 > 800 else active_action.initial_pm2_5
+        ct = (payload.co2 or c_amb) if active_action.initial_co2 > 800 else (cal_pm25 or c_amb)
+        
+        ratio = max(0.01, min(1.0, (max(c_amb + 1.0, ct) - c_amb) / max(5.0, c0 - c_amb)))
+        k_val = round(float(-np.log(ratio) / duration), 4)
+        active_action.decay_constant_k = k_val
+        active_action.cadr_estimate_cfm = round(k_val * 250.0, 1)
+
+        # Health status evaluation of filtration / ventilation
+        if duration > 3.0:
+            if k_val < 0.02:
+                active_action.filter_health_status = "CLOGGED"
+            elif k_val < 0.05:
+                active_action.filter_health_status = "DEGRADED"
+            else:
+                active_action.filter_health_status = "NOMINAL"
+
+        if aqi_result["aqi"] <= active_action.target_aqi + 5 or (active_action.initial_co2 > 1000 and payload.co2 <= 800):
             active_action.is_active = False
             active_action.resolved_at = ts
-            duration = (ts - active_action.timestamp).total_seconds() / 60.0
             active_action.recovery_duration_mins = round(duration, 1)
             reduction = active_action.initial_aqi - aqi_result["aqi"]
             initial_delta = max(1, active_action.initial_aqi - active_action.target_aqi)
             active_action.efficacy_score = round(min(100.0, max(0.0, (reduction / initial_delta) * 100.0)), 1)
+            active_action.recovery_message = f"CO2 returned to {int(payload.co2)} ppm in {round(duration, 1)} mins (k={k_val} min⁻¹, CADR: {active_action.cadr_estimate_cfm} CFM)"
 
     await db.commit()
     await db.refresh(telemetry_record)
 
-    # 7. Sub-second WebSocket Broadcast
+    # 7. Sub-second WebSocket Broadcast (v3.0 Comprehensive Metrics)
     broadcast_data = {
         "type": "TELEMETRY_UPDATE",
         "device_id": payload.device_id,
         "timestamp": ts.isoformat(),
         "pm2_5": payload.pm2_5,
         "pm10": telemetry_record.pm10,
+        "pm0_3": telemetry_record.pm0_3,
+        "pm1_0": telemetry_record.pm1_0,
+        "hcho": telemetry_record.hcho,
+        "voc_index": telemetry_record.voc_index,
+        "nox_index": telemetry_record.nox_index,
+        "gas_resistance": telemetry_record.gas_resistance,
         "co2": payload.co2,
         "voc": payload.voc,
         "temperature": payload.temperature,

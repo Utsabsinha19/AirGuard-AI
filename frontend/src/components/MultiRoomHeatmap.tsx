@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { Device, Telemetry } from "../types";
-import { Home, Layers, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Layers } from "lucide-react";
 
 interface MultiRoomHeatmapProps {
   devices: Device[];
@@ -15,6 +15,11 @@ export const MultiRoomHeatmap: React.FC<MultiRoomHeatmapProps> = ({
   onSelectDevice,
   latestTelemetryMap,
 }) => {
+  const [selectedZone, setSelectedZone] = useState<string>("All");
+
+  const zones = ["All", ...Array.from(new Set(devices.map((d) => d.zone || "Indoor")))];
+  const filteredDevices = selectedZone === "All" ? devices : devices.filter((d) => (d.zone || "Indoor") === selectedZone);
+
   const getCategoryColor = (aqi: number) => {
     if (aqi <= 50) return "#10b981";
     if (aqi <= 100) return "#f59e0b";
@@ -26,20 +31,39 @@ export const MultiRoomHeatmap: React.FC<MultiRoomHeatmapProps> = ({
   return (
     <div className="glass-panel" style={{ padding: "24px", borderRadius: "18px" }}>
       
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <Layers size={20} color="#a855f7" />
           <h3 style={{ fontSize: "17px", fontWeight: "700", color: "#f8fafc" }}>
-            Multi-Room Spatial Zone Grid (US-05)
+            Multi-Room & Zone Topology Heatmap (v2.0 Section 4.1)
           </h3>
         </div>
-        <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-          {devices.length} Nodes Active
-        </span>
+
+        {/* Zone Filter Navigation Tabs */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+          {zones.map((z) => (
+            <button
+              key={z}
+              onClick={() => setSelectedZone(z)}
+              style={{
+                background: selectedZone === z ? "rgba(168, 85, 247, 0.25)" : "rgba(255, 255, 255, 0.05)",
+                border: `1px solid ${selectedZone === z ? "#a855f7" : "rgba(255, 255, 255, 0.1)"}`,
+                color: selectedZone === z ? "#f8fafc" : "var(--text-muted)",
+                fontSize: "11px",
+                fontWeight: "600",
+                padding: "4px 10px",
+                borderRadius: "8px",
+                cursor: "pointer"
+              }}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
-        {devices.map((dev) => {
+        {filteredDevices.map((dev) => {
           const tel = latestTelemetryMap[dev.id] || dev.latest_telemetry;
           const aqi = tel?.aqi ?? 45;
           const cat = tel?.aqi_category ?? "Good";

@@ -88,13 +88,23 @@ class VirtualEdgeNode:
             elif self.active_event == "poor_ventilation":
                 self.co2 += np.random.uniform(30.0, 60.0)
                 self.voc += np.random.uniform(10.0, 20.0)
-            elif self.active_event == "chemical_cleaner":
-                self.voc += np.random.uniform(40.0, 70.0)
+            elif self.active_event in ["chemical_cleaner", "chemical_event", "chemical"]:
+                self.voc += np.random.uniform(40.0, 75.0)
                 self.noise_level = 38.0  # silent
+            elif self.active_event in ["hvac_failure", "hvac"]:
+                self.pm2_5 += np.random.uniform(2.5, 5.0)
+                self.pm10 += np.random.uniform(5.0, 9.0)
+                self.humidity += np.random.uniform(1.0, 2.5)
             elif self.active_event == "high_occupancy":
                 self.co2 += np.random.uniform(40.0, 80.0)
                 self.voc += np.random.uniform(15.0, 30.0)
                 self.noise_level = 72.0 + np.random.normal(0, 4.0)  # loud social noise
+            elif self.active_event in ["material_off_gassing", "furniture"]:
+                self.voc += np.random.uniform(30.0, 50.0)
+            elif self.active_event in ["wildfire", "wildfire_smoke"]:
+                self.pm2_5 += np.random.uniform(8.0, 16.0)
+                self.pm10 += np.random.uniform(12.0, 24.0)
+                self.pressure = 1003.0
             elif self.active_event == "weather_inversion":
                 self.pressure = 1004.0 - np.random.uniform(1.0, 4.0)  # low pressure
                 self.pm2_5 += np.random.uniform(3.0, 6.0)
@@ -117,11 +127,46 @@ class VirtualEdgeNode:
 
     def sample_telemetry(self) -> Dict[str, Any]:
         self.step_physics()
-        return {
-            "device_id": self.device_id,
-            "timestamp": datetime.utcnow().isoformat(),
+        
+        # v3.0 Next-gen metrics
+        sim_hcho = round(0.015 + (self.voc / 2500.0) if self.active_event != "material_off_gassing" else 0.115, 3)
+        sim_voc_index = round(min(500.0, max(1.0, self.voc * 1.1)), 1)
+        sim_nox_index = round(min(500.0, max(1.0, 1.2 + (self.pm2_5 * 0.05))), 1)
+        sim_gas_res = round(max(5000.0, 65000.0 - (self.voc * 80.0)), 0)
+        sim_pm03 = round(self.pm2_5 * 0.28, 2)
+        sim_pm10 = round(self.pm2_5 * 0.68, 2)
+
+        metrics = {
             "pm2_5": round(self.pm2_5, 1),
             "pm10": round(self.pm10, 1),
+            "pm0_3": sim_pm03,
+            "pm1_0": sim_pm10,
+            "hcho": sim_hcho,
+            "voc_index": sim_voc_index,
+            "nox_index": sim_nox_index,
+            "gas_resistance": sim_gas_res,
+            "co2": round(self.co2, 0),
+            "voc": round(self.voc, 1),
+            "temperature": round(self.temperature, 1),
+            "humidity": round(self.humidity, 1),
+            "pressure": round(self.pressure, 1),
+            "ambient_light": round(self.ambient_light, 1),
+            "noise_level": round(self.noise_level, 1),
+            "battery_pct": self.battery_pct
+        }
+        return {
+            "device_id": self.device_id,
+            "location": self.room_name,
+            "timestamp": datetime.utcnow().isoformat(),
+            "metrics": metrics,
+            "pm2_5": round(self.pm2_5, 1),
+            "pm10": round(self.pm10, 1),
+            "pm0_3": sim_pm03,
+            "pm1_0": sim_pm10,
+            "hcho": sim_hcho,
+            "voc_index": sim_voc_index,
+            "nox_index": sim_nox_index,
+            "gas_resistance": sim_gas_res,
             "co2": round(self.co2, 0),
             "voc": round(self.voc, 1),
             "temperature": round(self.temperature, 1),
@@ -157,7 +202,20 @@ class VirtualEdgeNode:
             return False
 
     def _flush_offline_queue(self):
-        print(f"[{self.device_id}] Reconnected! Flushing {len(self.offline_queue)} queued records to backend...")
+        print(f"[{self.device_id}] Reconnected! Auto-flushing {len(self.offline_queue)} queued records in chronological order...")
+        try:
+            resp = requests.post(
+                f"{self.backend_url}/telemetry/batch",
+                json=self.offline_queue,
+                timeout=3.0
+            )
+            if resp.status_code == 200:
+                self.offline_queue.clear()
+                return
+        except Exception:
+            pass
+
+        # Sequential fallback
         while self.offline_queue:
             buffered = self.offline_queue.pop(0)
             try:

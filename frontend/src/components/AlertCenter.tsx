@@ -129,10 +129,28 @@ export const AlertCenter: React.FC<AlertCenterProps> = ({
                     </div>
                   )}
 
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-                    <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
-                      Node: {alert.device_id} • Channel: {alert.channel}
-                    </span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px", flexWrap: "wrap", gap: "6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>
+                        Node: {alert.device_id}
+                      </span>
+                      {(alert.channels || alert.channel || "WEB_DASHBOARD_TOAST").split(",").map((ch) => (
+                        <span
+                          key={ch}
+                          style={{
+                            fontSize: "9px",
+                            fontWeight: "600",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background: ch.includes("SMS") ? "rgba(239, 68, 68, 0.2)" : ch.includes("HARDWARE") ? "rgba(245, 158, 11, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                            color: ch.includes("SMS") ? "#fca5a5" : ch.includes("HARDWARE") ? "#fcd34d" : "#7dd3fc",
+                            border: "1px solid rgba(255,255,255,0.1)"
+                          }}
+                        >
+                          {ch.replace("_", " ")}
+                        </span>
+                      ))}
+                    </div>
 
                     <div style={{ display: "flex", gap: "6px" }}>
                       {onConvertToAction && !alert.acknowledged && (

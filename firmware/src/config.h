@@ -17,7 +17,8 @@
 // ==========================================
 #define DEVICE_ID           "AG-001"
 #define DEVICE_ROOM         "Master Bedroom"
-#define FIRMWARE_VERSION    "v1.3.0-EXP"
+#define DEVICE_ZONE         "Bedroom"
+#define FIRMWARE_VERSION    "v3.0.0-PRO"
 
 // ==========================================
 // Wi-Fi & MQTT Broker Configuration
@@ -28,7 +29,13 @@
 #define MQTT_BROKER_HOST    "192.168.1.100"   // Backend IP or EMQX Cloud
 #define MQTT_BROKER_PORT    1883
 #define MQTT_TOPIC_PUB      "airguard/" DEVICE_ID "/telemetry"
+#define MQTT_TOPIC_PUB_V2   "airguard/v1/devices/" DEVICE_ID "/telemetry"
+#define MQTT_TOPIC_PUB_V3   "airguard/v3/devices/" DEVICE_ID "/telemetry"
 #define MQTT_TOPIC_SUB      "airguard/" DEVICE_ID "/command"
+
+// Hardware Interrupt Wakeup & Smart Home Relay (v3.0 Section 1.2, 1.3)
+#define PIN_HAZARD_INT      33
+#define RELAY_ACTUATOR_PIN  4
 
 // ==========================================
 // Primary Sensor Pinout Definitions (ESP32)

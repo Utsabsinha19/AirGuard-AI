@@ -19,6 +19,7 @@ import {
   fetchActiveAction,
   logRemediationAction,
   resolveRemediationAction,
+  federatedCalibrateDevice,
 } from "./api";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { Navbar } from "./components/Navbar";
@@ -33,6 +34,9 @@ import { SimulatorControls } from "./components/SimulatorControls";
 import { SpatialFloorplan } from "./components/SpatialFloorplan";
 import { ModelComparisonModal } from "./components/ModelComparisonModal";
 import { DeviceCalibrationModal } from "./components/DeviceCalibrationModal";
+import { ActuationControlPanel } from "./components/ActuationControlPanel";
+import { CrossRoomDiffusionStudio } from "./components/CrossRoomDiffusionStudio";
+import { PersonalHealthExposureCard } from "./components/PersonalHealthExposureCard";
 
 export const App: React.FC = () => {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -57,6 +61,9 @@ export const App: React.FC = () => {
   const [isModelComparisonOpen, setIsModelComparisonOpen] = useState(false);
   const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
   const [showFloorplan, setShowFloorplan] = useState(true);
+  const [showActuation, setShowActuation] = useState(true);
+  const [showDiffusion, setShowDiffusion] = useState(true);
+  const [showHealth, setShowHealth] = useState(true);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -197,6 +204,16 @@ export const App: React.FC = () => {
     showToast(`Remediation completed! Measured Efficacy: ${res.efficacy_score}%`);
   };
 
+  const handleFederatedCalibrate = async () => {
+    try {
+      const res = await federatedCalibrateDevice(selectedDeviceId);
+      showToast(`Federated Calibration Complete: Baseline Ref PM2.5 = ${res.zero_point_reference_pm2_5} µg/m³`);
+      loadRoomData(selectedDeviceId, modelType);
+    } catch (err: any) {
+      showToast(`Federated sync failed: ${err.message}`);
+    }
+  };
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       
@@ -237,6 +254,13 @@ export const App: React.FC = () => {
         onOpenCalibration={() => setIsCalibrationOpen(true)}
         showFloorplan={showFloorplan}
         onToggleFloorplan={() => setShowFloorplan((v) => !v)}
+        showActuation={showActuation}
+        onToggleActuation={() => setShowActuation((v) => !v)}
+        showDiffusion={showDiffusion}
+        onToggleDiffusion={() => setShowDiffusion((v) => !v)}
+        showHealth={showHealth}
+        onToggleHealth={() => setShowHealth((v) => !v)}
+        onFederatedCalibrate={handleFederatedCalibrate}
       />
 
       {/* Main Content Area */}
@@ -299,6 +323,34 @@ export const App: React.FC = () => {
             modelType={modelType}
           />
         </div>
+
+        {/* v3.0 Smart Home Actuation Hub (Toggleable) */}
+        {showActuation && (
+          <div style={{ marginBottom: "20px" }}>
+            <ActuationControlPanel
+              selectedDeviceId={selectedDeviceId}
+              onActionTriggered={(msg) => showToast(`Smart Actuation: ${msg}`)}
+            />
+          </div>
+        )}
+
+        {/* v3.0 Spatio-Temporal Graph Diffusion Studio (Toggleable) */}
+        {showDiffusion && (
+          <div style={{ marginBottom: "20px" }}>
+            <CrossRoomDiffusionStudio
+              onSelectRoom={(roomId) => setSelectedDeviceId(roomId)}
+            />
+          </div>
+        )}
+
+        {/* v3.0 Personal Health Exposure & Inhalation Intake Card (Toggleable) */}
+        {showHealth && (
+          <div style={{ marginBottom: "20px" }}>
+            <PersonalHealthExposureCard
+              onProfileUpdated={(msg) => showToast(msg)}
+            />
+          </div>
+        )}
 
         {/* Multi-Room Spatial Zone Heatmap Grid */}
         <div style={{ marginBottom: "20px" }}>

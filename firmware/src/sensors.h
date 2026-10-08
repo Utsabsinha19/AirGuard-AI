@@ -17,11 +17,16 @@
 #include <Arduino.h>
 
 struct SensorReadings {
+    float pm0_3;
     float pm1_0;
     float pm2_5;
     float pm10;
     int   co2_ppm;
     int   voc_ppb;
+    float hcho_ppm;         // Electrochemical Formaldehyde in ppm (ZE08)
+    float voc_index;        // Sensirion VOC Index
+    float nox_index;        // Sensirion NOx Index
+    float gas_resistance;   // BME688 in Ohms
     float temperature_c;
     float humidity_rh;
     

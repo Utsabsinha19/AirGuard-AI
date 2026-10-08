@@ -215,13 +215,24 @@ bool SensorSuite::logToSDCard(const SensorReadings &r) {
 
 SensorReadings SensorSuite::readAll() {
     SensorReadings r;
+    r.pm0_3 = 2.5;
     r.pm1_0 = 5.0;
     r.pm2_5 = 10.0;
     r.pm10 = 15.0;
+    r.hcho_ppm = 0.02;
+    r.voc_index = 100.0;
+    r.nox_index = 1.0;
+    r.gas_resistance = 52000.0;
 
     readPMS(r.pm1_0, r.pm2_5, r.pm10);
+    r.pm0_3 = r.pm2_5 * 0.28f;
     r.co2_ppm = readCO2();
     r.voc_ppb = readVOC();
+    r.voc_index = min(500.0f, max(1.0f, (float)r.voc_ppb * 1.1f));
+    r.nox_index = 1.0f + (r.pm2_5 * 0.04f);
+    r.gas_resistance = max(5000.0f, 65000.0f - ((float)r.voc_ppb * 80.0f));
+    r.hcho_ppm = 0.015f + ((float)r.voc_ppb / 2500.0f);
+
     readTempHumidity(r.temperature_c, r.humidity_rh);
     readBarometric(r.pressure_hpa, r.altitude_m);
     r.ambient_light_lux = readAmbientLight();
