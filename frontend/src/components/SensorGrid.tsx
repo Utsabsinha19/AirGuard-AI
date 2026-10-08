@@ -1,6 +1,6 @@
 import React from "react";
-import { Telemetry } from "../types";
-import { Wind, Activity, Gauge, CloudRain, Thermometer, ShieldAlert } from "lucide-react";
+import type { Telemetry } from "../types";
+import { Wind, Activity, Gauge, CloudRain, Thermometer, Compass, Sun, Volume2, BatteryCharging } from "lucide-react";
 
 interface SensorGridProps {
   telemetry: Telemetry | null;
@@ -13,6 +13,12 @@ export const SensorGrid: React.FC<SensorGridProps> = ({ telemetry }) => {
   const voc = telemetry?.calibrated_voc ?? 115;
   const temp = telemetry?.temperature ?? 22.4;
   const hum = telemetry?.humidity ?? 46.5;
+
+  // Expanded sensor suite (Section 2.1)
+  const pressure = telemetry?.pressure ?? 1013.25;
+  const light = telemetry?.ambient_light ?? 180.0;
+  const noise = telemetry?.noise_level ?? 42.0;
+  const battery = telemetry?.battery_pct ?? 96;
 
   const metrics = [
     {
@@ -30,7 +36,7 @@ export const SensorGrid: React.FC<SensorGridProps> = ({ telemetry }) => {
       value: Math.round(co2).toString(),
       unit: "ppm",
       icon: <Activity size={18} color="#a855f7" />,
-      subtext: "NDIR Optical Sensor",
+      subtext: "MH-Z19B NDIR Sensor",
       status: co2 <= 800 ? "Fresh" : co2 <= 1200 ? "Moderate" : "Stagnant",
       statusColor: co2 <= 800 ? "#10b981" : co2 <= 1200 ? "#f59e0b" : "#ef4444",
       barPercent: Math.min(100, (co2 / 2000) * 100),
@@ -46,19 +52,39 @@ export const SensorGrid: React.FC<SensorGridProps> = ({ telemetry }) => {
       barPercent: Math.min(100, (voc / 800) * 100),
     },
     {
-      title: "PM10 (Coarse Particulates)",
-      value: pm10.toFixed(1),
-      unit: "µg/m³",
-      icon: <Wind size={18} color="#6366f1" />,
-      subtext: "Laser Scattering",
-      status: pm10 <= 54 ? "Normal" : "High",
-      statusColor: pm10 <= 54 ? "#10b981" : "#f59e0b",
-      barPercent: Math.min(100, (pm10 / 150) * 100),
+      title: "Barometric Pressure",
+      value: pressure.toFixed(1),
+      unit: "hPa",
+      icon: <Compass size={18} color="#06b6d4" />,
+      subtext: "BMP280 Barometer",
+      status: pressure >= 1010 ? "Stable High" : "Inversion / Low",
+      statusColor: pressure >= 1010 ? "#10b981" : "#f59e0b",
+      barPercent: Math.min(100, Math.max(0, ((pressure - 980) / 50) * 100)),
     },
     {
-      title: "Temperature",
-      value: temp.toFixed(1),
-      unit: "°C",
+      title: "Ambient Lighting",
+      value: Math.round(light).toString(),
+      unit: "lux",
+      icon: <Sun size={18} color="#eab308" />,
+      subtext: "TEMT6000 Optical",
+      status: light > 50 ? "Illuminated" : "Darkness",
+      statusColor: light > 50 ? "#eab308" : "#94a3b8",
+      barPercent: Math.min(100, (light / 500) * 100),
+    },
+    {
+      title: "Acoustic Noise",
+      value: noise.toFixed(1),
+      unit: "dB",
+      icon: <Volume2 size={18} color="#6366f1" />,
+      subtext: "Occupancy Noise",
+      status: noise < 55 ? "Quiet Room" : "Active Gathering",
+      statusColor: noise < 55 ? "#10b981" : "#f59e0b",
+      barPercent: Math.min(100, ((noise - 30) / 60) * 100),
+    },
+    {
+      title: "Temperature & Hum",
+      value: `${temp.toFixed(1)}°C`,
+      unit: `${Math.round(hum)}% RH`,
       icon: <Thermometer size={18} color="#f97316" />,
       subtext: "Sensirion SHT31",
       status: temp >= 20 && temp <= 25 ? "Comfortable" : "Unfavorable",
@@ -66,29 +92,29 @@ export const SensorGrid: React.FC<SensorGridProps> = ({ telemetry }) => {
       barPercent: Math.min(100, Math.max(0, ((temp - 10) / 25) * 100)),
     },
     {
-      title: "Relative Humidity",
-      value: hum.toFixed(1),
-      unit: "%",
-      icon: <CloudRain size={18} color="#06b6d4" />,
-      subtext: "Sensirion SHT31",
-      status: hum >= 35 && hum <= 60 ? "Balanced" : "Drifting",
-      statusColor: hum >= 35 && hum <= 60 ? "#10b981" : "#f59e0b",
-      barPercent: Math.min(100, hum),
+      title: "Li-Po Battery Level",
+      value: `${battery}%`,
+      unit: "3.7V",
+      icon: <BatteryCharging size={18} color="#10b981" />,
+      subtext: "Power Management",
+      status: battery > 20 ? "Operational" : "Deep Sleep Saver",
+      statusColor: battery > 20 ? "#10b981" : "#ef4444",
+      barPercent: battery,
     },
   ];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "16px" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
       {metrics.map((m, idx) => (
-        <div key={idx} className="glass-panel" style={{ padding: "16px", borderRadius: "14px" }}>
+        <div key={idx} className="glass-panel" style={{ padding: "14px 16px", borderRadius: "14px" }}>
           
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "600" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600" }}>
               {m.title}
             </span>
             <div style={{
-              width: "30px",
-              height: "30px",
+              width: "28px",
+              height: "28px",
               borderRadius: "8px",
               background: "rgba(255, 255, 255, 0.05)",
               display: "flex",
@@ -100,22 +126,22 @@ export const SensorGrid: React.FC<SensorGridProps> = ({ telemetry }) => {
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "6px" }}>
-            <span className="mono-num" style={{ fontSize: "26px", fontWeight: "700", color: "#f8fafc" }}>
+            <span className="mono-num" style={{ fontSize: "24px", fontWeight: "700", color: "#f8fafc" }}>
               {m.value}
             </span>
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: "500" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "500" }}>
               {m.unit}
             </span>
           </div>
 
           {/* Progress Bar */}
           <div style={{
-            height: "5px",
+            height: "4px",
             width: "100%",
             borderRadius: "9999px",
             background: "rgba(255, 255, 255, 0.08)",
             overflow: "hidden",
-            marginBottom: "10px"
+            marginBottom: "8px"
           }}>
             <div style={{
               height: "100%",
@@ -126,7 +152,7 @@ export const SensorGrid: React.FC<SensorGridProps> = ({ telemetry }) => {
             }} />
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "10px" }}>
             <span style={{ color: "var(--text-dim)" }}>
               {m.subtext}
             </span>

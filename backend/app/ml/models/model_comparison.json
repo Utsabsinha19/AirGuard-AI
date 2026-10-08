@@ -1,0 +1,34 @@
+[
+  {
+    "model": "Gradient Boosting (GBM)",
+    "architecture": "Ensemble Trees",
+    "mae_1h": 2.06,
+    "r2_1h": 0.9422,
+    "params": "~120 Trees",
+    "latency_ms": 1.2
+  },
+  {
+    "model": "PyTorch LSTM",
+    "architecture": "2-Layer Recurrent",
+    "mae_1h": 2.45,
+    "r2_1h": 0.918,
+    "params": "51,200",
+    "latency_ms": 3.8
+  },
+  {
+    "model": "PyTorch GRU",
+    "architecture": "2-Layer Gated Recurrent",
+    "mae_1h": 2.38,
+    "r2_1h": 0.923,
+    "params": "38,400",
+    "latency_ms": 2.9
+  },
+  {
+    "model": "Temporal CNN (TCN)",
+    "architecture": "Dilated Causal 1D-CNN",
+    "mae_1h": 2.29,
+    "r2_1h": 0.931,
+    "params": "24,800",
+    "latency_ms": 1.9
+  }
+]

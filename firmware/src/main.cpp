@@ -1,7 +1,9 @@
 /**
- * AirGuard AI - ESP32 Main Firmware Entrypoint (FR-1, FR-2)
- * Orchestrates sensor acquisition, MQTT telemetry transmission, offline flash buffering,
- * local OLED/RGB feedback, and FreeRTOS task scheduling.
+ * AirGuard AI - ESP32 Main Firmware Entrypoint (FR-1, FR-2, Section 2.1)
+ * Enhanced with:
+ * - Full multi-sensor serialization (PM, CO2, VOC, Temp, Hum, Pressure, Light, Noise, Battery, GPS)
+ * - MicroSD Card permanent logging
+ * - Deep Sleep Power Management for prolonged standalone deployment
  */
 
 #include <Arduino.h>
@@ -34,17 +36,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     String msg;
     for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
     Serial.printf("[MQTT] Inbound Command on [%s]: %s\n", topic, msg.c_str());
-    
-    // Command parsing (e.g. trigger calibration, toggle alarm)
+
     if (msg.indexOf("ALARM") >= 0) {
         ui.triggerAlarm(true);
     }
 }
 
 void reconnectMQTT() {
-    if (WiFi.status() != WL_CONNECTED) {
-        return;
-    }
+    if (WiFi.status() != WL_CONNECTED) return;
 
     if (!mqttClient.connected()) {
         unsigned long now = millis();
@@ -56,12 +55,12 @@ void reconnectMQTT() {
                 Serial.println(" CONNECTED!");
                 mqttClient.subscribe(MQTT_TOPIC_SUB);
 
-                // Drain any accumulated offline telemetry buffer (FR-2.3)
+                // Drain accumulated offline flash/RAM buffer (FR-2.3)
                 if (offlineQueue.getPendingCount() > 0) {
                     offlineQueue.flushToMQTT(mqttClient, MQTT_TOPIC_PUB);
                 }
             } else {
-                Serial.printf(" FAILED, rc=%d. Will retry.\n", mqttClient.state());
+                Serial.printf(" FAILED, rc=%d. Retrying.\n", mqttClient.state());
             }
         }
     }
@@ -69,17 +68,23 @@ void reconnectMQTT() {
 
 String serializeTelemetry(const SensorReadings &r) {
     JsonDocument doc;
-    doc["device_id"]    = DEVICE_ID;
-    doc["room"]         = DEVICE_ROOM;
-    doc["uptime_ms"]    = millis();
-    doc["pm1_0"]        = r.pm1_0;
-    doc["pm2_5"]        = r.pm2_5;
-    doc["pm10"]         = r.pm10;
-    doc["co2"]          = r.co2_ppm;
-    doc["voc"]          = r.voc_ppb;
-    doc["temperature"]  = r.temperature_c;
-    doc["humidity"]     = r.humidity_rh;
-    doc["pressure"]     = 1013.25;
+    doc["device_id"]        = DEVICE_ID;
+    doc["room"]             = DEVICE_ROOM;
+    doc["uptime_ms"]        = millis();
+    doc["pm1_0"]            = r.pm1_0;
+    doc["pm2_5"]            = r.pm2_5;
+    doc["pm10"]             = r.pm10;
+    doc["co2"]              = r.co2_ppm;
+    doc["voc"]              = r.voc_ppb;
+    doc["temperature"]      = r.temperature_c;
+    doc["humidity"]         = r.humidity_rh;
+    doc["pressure"]         = r.pressure_hpa;
+    doc["ambient_light"]    = r.ambient_light_lux;
+    doc["noise_level"]      = r.noise_level_db;
+    doc["battery_voltage"]  = r.battery_voltage;
+    doc["battery_pct"]      = r.battery_pct;
+    doc["latitude"]         = r.latitude;
+    doc["longitude"]        = r.longitude;
 
     String jsonOutput;
     serializeJson(doc, jsonOutput);
@@ -87,7 +92,6 @@ String serializeTelemetry(const SensorReadings &r) {
 }
 
 int estimateLocalAQI(float pm25, int co2) {
-    // Quick embedded AQI estimation for display
     int aqi_pm = (int)(pm25 * 3.0);
     int aqi_co2 = co2 > 1000 ? (int)((co2 - 1000) * 0.15 + 100) : 50;
     return max(aqi_pm, aqi_co2);
@@ -105,7 +109,7 @@ void setup() {
     Serial.begin(115200);
     delay(500);
     Serial.println("\n==========================================");
-    Serial.println("  AirGuard AI - Edge Node Initializing   ");
+    Serial.println("  AirGuard AI - Edge Node (v1.3 Expanded) ");
     Serial.println("==========================================");
 
     sensors.begin();
@@ -120,7 +124,6 @@ void setup() {
 }
 
 void loop() {
-    // Maintain MQTT event pump
     if (WiFi.status() == WL_CONNECTED) {
         if (!mqttClient.connected()) {
             reconnectMQTT();
@@ -131,7 +134,6 @@ void loop() {
 
     unsigned long currentMillis = millis();
 
-    // Periodic sensor acquisition & transmission (every 2000 ms)
     if (currentMillis - lastSampleTime >= TELEMETRY_INTERVAL_MS) {
         lastSampleTime = currentMillis;
 
@@ -144,11 +146,10 @@ void loop() {
         }
 
         if (!published) {
-            // Buffer in local circular FIFO during offline outages (FR-2.3, NFR-2)
+            // Buffer locally during network dropouts (FR-2.3, NFR-2)
             offlineQueue.enqueue(jsonPayload);
         }
 
-        // Local estimation for immediate OLED & LED feedback
         int estimatedAQI = estimateLocalAQI(readings.pm2_5, readings.co2_ppm);
         const char* label = getAQILabel(estimatedAQI);
 
@@ -161,9 +162,15 @@ void loop() {
             offlineQueue.getPendingCount()
         );
 
-        // Sound critical buzzer alarm if hazard threshold exceeded locally
         if (readings.pm2_5 > 55.0 || readings.co2_ppm > 1600 || readings.voc_ppb > 600) {
             ui.triggerAlarm(false);
+        }
+
+        // Section 2.1 Power Optimization: if operating on low battery (< 15%), enter deep sleep
+        if (readings.battery_pct < 15 && readings.battery_voltage < 3.4) {
+            Serial.printf("[Power] Critical battery (%d%%). Entering deep sleep for %ds...\n", readings.battery_pct, BATTERY_SAVER_SLEEP_S);
+            esp_sleep_enable_timer_wakeup(BATTERY_SAVER_SLEEP_S * 1000000ULL);
+            esp_deep_sleep_start();
         }
     }
 }

@@ -1,7 +1,11 @@
 """
-AirGuard AI - Virtual IoT Edge Node Simulator (FR-1, FR-2, NFR-2)
-Faithfully emulates ESP32 edge hardware behavior, sensor physics,
-offline circular buffering during network dropouts, and burst flush on reconnect.
+AirGuard AI - Virtual IoT Edge Node Simulator (Enhanced, Section 2.1)
+Simulates extended sensors:
+- BMP280 Barometric Pressure & Weather Trends
+- Ambient Lux Lighting & Circadian Oscillations
+- Acoustic Noise dB & Human Activity Levels
+- Li-Po Battery Monitoring & Discharge
+- GPS Coordinates for Spatial / Mobile Mapping
 """
 
 import time
@@ -21,13 +25,14 @@ class VirtualEdgeNode:
         baseline_co2: float = 550.0,
         baseline_voc: float = 90.0,
         baseline_temp: float = 22.0,
-        baseline_hum: float = 46.0
+        baseline_hum: float = 46.0,
+        latitude: float = 37.7749,
+        longitude: float = -122.4194
     ):
         self.device_id = device_id
         self.room_name = room_name
         self.backend_url = backend_url
         
-        # Current physical atmospheric state
         self.pm2_5 = baseline_pm
         self.pm10 = baseline_pm * 1.4
         self.co2 = baseline_co2
@@ -35,70 +40,82 @@ class VirtualEdgeNode:
         self.temperature = baseline_temp
         self.humidity = baseline_hum
         self.pressure = 1013.25
+        self.ambient_light = 180.0
+        self.noise_level = 42.0
+        self.battery_pct = 96
+        self.latitude = latitude
+        self.longitude = longitude
 
-        # Baselines
         self.base_pm = baseline_pm
         self.base_co2 = baseline_co2
         self.base_voc = baseline_voc
         self.base_temp = baseline_temp
         self.base_hum = baseline_hum
+        self.base_pressure = 1013.25
 
-        # Offline Buffer Queue (FR-2.3, NFR-2)
         self.is_network_down = False
         self.offline_queue: List[Dict[str, Any]] = []
         self.max_queue_size = 500
 
-        # Active scenario state
         self.active_event: Optional[str] = None
         self.event_remaining_steps = 0
 
     def trigger_event(self, event_name: str, duration_steps: int = 15):
-        """Injects a physical environmental perturbation."""
         self.active_event = event_name.lower()
         self.event_remaining_steps = duration_steps
 
     def step_physics(self):
-        """Simulates 1 discrete time-step of indoor atmospheric evolution."""
-        # Brownian random walk
         self.pm2_5 += np.random.normal(0, 0.2)
         self.co2 += np.random.normal(0, 1.2)
         self.voc += np.random.normal(0, 1.0)
         self.temperature += np.random.normal(0, 0.05)
         self.humidity += np.random.normal(0, 0.1)
+        self.pressure += np.random.normal(0, 0.08)
+        self.noise_level = 40.0 + np.random.normal(0, 2.5)
 
-        # Handling active simulated events
+        # Ambient light diurnal cycle
+        hour = datetime.utcnow().hour
+        is_day = 6 <= hour <= 20
+        self.ambient_light = 240.0 + np.random.normal(0, 15.0) if is_day else 15.0 + np.random.normal(0, 3.0)
+
+        # Handling simulated events
         if self.event_remaining_steps > 0:
             self.event_remaining_steps -= 1
             if self.active_event == "cooking":
                 self.pm2_5 += np.random.uniform(4.0, 8.0)
                 self.voc += np.random.uniform(15.0, 30.0)
+                self.noise_level += 18.0
             elif self.active_event == "poor_ventilation":
                 self.co2 += np.random.uniform(30.0, 60.0)
                 self.voc += np.random.uniform(10.0, 20.0)
             elif self.active_event == "chemical_cleaner":
                 self.voc += np.random.uniform(40.0, 70.0)
+                self.noise_level = 38.0  # silent
+            elif self.active_event == "high_occupancy":
+                self.co2 += np.random.uniform(40.0, 80.0)
+                self.voc += np.random.uniform(15.0, 30.0)
+                self.noise_level = 72.0 + np.random.normal(0, 4.0)  # loud social noise
+            elif self.active_event == "weather_inversion":
+                self.pressure = 1004.0 - np.random.uniform(1.0, 4.0)  # low pressure
+                self.pm2_5 += np.random.uniform(3.0, 6.0)
             elif self.active_event == "open_window":
-                # Rapid dilution toward outdoor baseline
                 self.pm2_5 += (self.base_pm - self.pm2_5) * 0.25
                 self.co2 += (420.0 - self.co2) * 0.30
                 self.voc += (self.base_voc - self.voc) * 0.30
         else:
             self.active_event = None
-            # Natural relaxation toward room baseline
             self.pm2_5 += (self.base_pm - self.pm2_5) * 0.04
             self.co2 += (self.base_co2 - self.co2) * 0.03
             self.voc += (self.base_voc - self.voc) * 0.04
+            self.pressure += (self.base_pressure - self.pressure) * 0.05
 
-        # Physical clamping
         self.pm2_5 = max(1.0, self.pm2_5)
         self.pm10 = max(self.pm2_5, self.pm2_5 * 1.35 + np.random.normal(0, 0.4))
         self.co2 = max(390.0, self.co2)
         self.voc = max(10.0, self.voc)
-        self.temperature = max(15.0, min(35.0, self.temperature))
-        self.humidity = max(20.0, min(95.0, self.humidity))
+        self.noise_level = max(35.0, min(95.0, self.noise_level))
 
     def sample_telemetry(self) -> Dict[str, Any]:
-        """Samples hardware sensors into JSON telemetry payload."""
         self.step_physics()
         return {
             "device_id": self.device_id,
@@ -109,11 +126,15 @@ class VirtualEdgeNode:
             "voc": round(self.voc, 1),
             "temperature": round(self.temperature, 1),
             "humidity": round(self.humidity, 1),
-            "pressure": round(self.pressure, 1)
+            "pressure": round(self.pressure, 1),
+            "ambient_light": round(self.ambient_light, 1),
+            "noise_level": round(self.noise_level, 1),
+            "battery_pct": self.battery_pct,
+            "latitude": self.latitude,
+            "longitude": self.longitude
         }
 
     def transmit(self) -> bool:
-        """Sends reading or queues it during simulated Wi-Fi outage."""
         payload = self.sample_telemetry()
 
         if self.is_network_down:
@@ -121,11 +142,9 @@ class VirtualEdgeNode:
                 self.offline_queue.append(payload)
             return False
 
-        # If network is healthy and there were buffered records, flush them first (FR-2.3)
         if self.offline_queue:
             self._flush_offline_queue()
 
-        # Send current payload
         try:
             resp = requests.post(
                 f"{self.backend_url}/telemetry/ingest",
@@ -134,7 +153,6 @@ class VirtualEdgeNode:
             )
             return resp.status_code == 200
         except Exception:
-            # Network failure: enqueue
             self.offline_queue.append(payload)
             return False
 
@@ -149,6 +167,5 @@ class VirtualEdgeNode:
                     timeout=1.5
                 )
             except Exception:
-                # Put back and wait
                 self.offline_queue.insert(0, buffered)
                 break

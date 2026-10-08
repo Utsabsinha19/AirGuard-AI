@@ -1,6 +1,6 @@
 import React from "react";
-import { AlertItem } from "../types";
-import { Bell, X, Check, AlertOctagon, AlertTriangle, Info, Volume2 } from "lucide-react";
+import type { AlertItem } from "../types";
+import { Bell, X, Check, AlertOctagon, AlertTriangle, Sparkles } from "lucide-react";
 
 interface AlertCenterProps {
   alerts: AlertItem[];
@@ -8,6 +8,7 @@ interface AlertCenterProps {
   onClose: () => void;
   onAcknowledge: (id: number) => void;
   onAcknowledgeAll: () => void;
+  onConvertToAction?: (alertId: number) => void;
 }
 
 export const AlertCenter: React.FC<AlertCenterProps> = ({
@@ -16,6 +17,7 @@ export const AlertCenter: React.FC<AlertCenterProps> = ({
   onClose,
   onAcknowledge,
   onAcknowledgeAll,
+  onConvertToAction,
 }) => {
   if (!isOpen) return null;
 
@@ -25,7 +27,7 @@ export const AlertCenter: React.FC<AlertCenterProps> = ({
         className="glass-panel"
         style={{
           width: "100%",
-          maxWidth: "520px",
+          maxWidth: "540px",
           maxHeight: "85vh",
           padding: "24px",
           borderRadius: "20px",
@@ -41,7 +43,7 @@ export const AlertCenter: React.FC<AlertCenterProps> = ({
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <Bell size={20} color="#f43f5e" />
             <h3 style={{ fontSize: "18px", fontWeight: "700", color: "#ffffff" }}>
-              Alert & Notification Center (FR-5)
+              Alert & Remediation Center (Section 2.3)
             </h3>
           </div>
 
@@ -74,7 +76,7 @@ export const AlertCenter: React.FC<AlertCenterProps> = ({
         <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px", paddingRight: "4px" }}>
           {alerts.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)" }}>
-              <p style={{ fontSize: "14px" }}>No alerts logged. Atmosphere is nominal.</p>
+              <p style={{ fontSize: "14px" }}>No active alerts. Atmosphere is nominal.</p>
             </div>
           ) : (
             alerts.map((alert) => {
@@ -132,16 +134,29 @@ export const AlertCenter: React.FC<AlertCenterProps> = ({
                       Node: {alert.device_id} • Channel: {alert.channel}
                     </span>
 
-                    {!alert.acknowledged && (
-                      <button
-                        onClick={() => onAcknowledge(alert.id)}
-                        className="btn-secondary"
-                        style={{ fontSize: "11px", padding: "4px 10px" }}
-                      >
-                        <Check size={12} />
-                        <span>Acknowledge</span>
-                      </button>
-                    )}
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      {onConvertToAction && !alert.acknowledged && (
+                        <button
+                          onClick={() => onConvertToAction(alert.id)}
+                          className="btn-primary"
+                          style={{ fontSize: "11px", padding: "4px 10px" }}
+                        >
+                          <Sparkles size={12} />
+                          <span>Take Action</span>
+                        </button>
+                      )}
+
+                      {!alert.acknowledged && (
+                        <button
+                          onClick={() => onAcknowledge(alert.id)}
+                          className="btn-secondary"
+                          style={{ fontSize: "11px", padding: "4px 10px" }}
+                        >
+                          <Check size={12} />
+                          <span>Acknowledge</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

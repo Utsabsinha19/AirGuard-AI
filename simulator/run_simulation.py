@@ -1,10 +1,5 @@
 """
-AirGuard AI - Multi-Room IoT Fleet Simulator Runner
-Spawns and orchestrates 4 virtual edge nodes corresponding to:
-- AG-001: Master Bedroom
-- AG-002: Living Room
-- AG-003: Kitchen
-- AG-004: Home Office
+AirGuard AI - Multi-Room IoT Fleet Simulator Runner (Enhanced)
 """
 
 import time
@@ -14,7 +9,6 @@ from simulator.virtual_device import VirtualEdgeNode
 
 
 def seed_initial_history(nodes, backend_url="http://127.0.0.1:8000/api", minutes_back=30):
-    """Pre-populates past 30 minutes of telemetry for rich initial charts."""
     print(f"[Simulator] Seeding {minutes_back} minutes of realistic historical telemetry...")
     now = datetime.utcnow()
     for m in range(minutes_back, 0, -1):
@@ -30,7 +24,12 @@ def seed_initial_history(nodes, backend_url="http://127.0.0.1:8000/api", minutes
                 "voc": round(node.voc, 1),
                 "temperature": round(node.temperature, 1),
                 "humidity": round(node.humidity, 1),
-                "pressure": round(node.pressure, 1)
+                "pressure": round(node.pressure, 1),
+                "ambient_light": round(node.ambient_light, 1),
+                "noise_level": round(node.noise_level, 1),
+                "battery_pct": node.battery_pct,
+                "latitude": node.latitude,
+                "longitude": node.longitude
             }
             try:
                 import requests
@@ -48,10 +47,10 @@ def run_fleet_simulation(backend_url="http://127.0.0.1:8000/api", seed_history=T
     print("=" * 60)
 
     nodes = [
-        VirtualEdgeNode("AG-001", "Master Bedroom", backend_url, baseline_pm=7.0, baseline_co2=580.0, baseline_voc=85.0),
-        VirtualEdgeNode("AG-002", "Living Room", backend_url, baseline_pm=11.0, baseline_co2=640.0, baseline_voc=110.0),
-        VirtualEdgeNode("AG-003", "Kitchen", backend_url, baseline_pm=14.0, baseline_co2=520.0, baseline_voc=130.0),
-        VirtualEdgeNode("AG-004", "Home Office", backend_url, baseline_pm=8.5, baseline_co2=750.0, baseline_voc=95.0),
+        VirtualEdgeNode("AG-001", "Master Bedroom", backend_url, baseline_pm=7.0, baseline_co2=580.0, baseline_voc=85.0, latitude=37.7749, longitude=-122.4194),
+        VirtualEdgeNode("AG-002", "Living Room", backend_url, baseline_pm=11.0, baseline_co2=640.0, baseline_voc=110.0, latitude=37.7749, longitude=-122.4192),
+        VirtualEdgeNode("AG-003", "Kitchen", backend_url, baseline_pm=14.0, baseline_co2=520.0, baseline_voc=130.0, latitude=37.7748, longitude=-122.4193),
+        VirtualEdgeNode("AG-004", "Home Office", backend_url, baseline_pm=8.5, baseline_co2=750.0, baseline_voc=95.0, latitude=37.7750, longitude=-122.4195),
     ]
 
     if seed_history:
@@ -63,7 +62,6 @@ def run_fleet_simulation(backend_url="http://127.0.0.1:8000/api", seed_history=T
     try:
         while True:
             step += 1
-            # Every 45 steps (~90s), introduce a mild organic fluctuation in Kitchen
             if step % 45 == 0:
                 print("[Simulator] Injecting minor culinary activity in Kitchen (AG-003)...")
                 nodes[2].trigger_event("cooking", duration_steps=10)

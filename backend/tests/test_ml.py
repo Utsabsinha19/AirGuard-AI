@@ -70,3 +70,48 @@ def test_multi_horizon_forecasting():
         assert p["predicted_co2"] >= 350.0
         assert p["confidence_lower"] <= p["predicted_pm2_5"] <= p["confidence_upper"]
         assert "aqi_category" in p
+
+
+def test_device_offset_and_gain_calibration():
+    # Test zero offset subtraction and gain factor scaling
+    raw_pm = 25.0
+    zero_offset = 5.0
+    gain = 1.2
+    # At 40% RH (no hygroscopic effect): (25 - 5) * 1.2 = 24.0
+    cal_pm = calibrate_pm25(raw_pm, humidity_rh=40.0, zero_offset=zero_offset, gain_scale=gain)
+    assert abs(cal_pm - 24.0) < 0.1
+
+    raw_voc = 200.0
+    cal_voc = calibrate_voc(raw_voc, temp_c=25.0, humidity_rh=50.0, zero_offset=20.0, gain_scale=0.9)
+    # (200 - 20) * 0.9 = 162.0 (approx due to AH)
+    assert abs(cal_voc - 162.0) < 5.0
+
+
+def test_neural_sequence_predictors():
+    # Test PyTorch LSTM, GRU, and TCN models
+    history = [
+        {"pm2_5": 15.0 + i, "co2": 600.0, "voc": 120.0, "temperature": 22.0, "humidity": 45.0}
+        for i in range(12)
+    ]
+    for model_type in ["lstm", "gru", "tcn"]:
+        preds = neural_predictor.predict_sequence(history, architecture=model_type)
+        assert len(preds) == 4
+        for p in preds:
+            assert p["predicted_pm2_5"] >= 0.0
+            assert p["predicted_co2"] >= 300.0
+            assert p["confidence_lower"] <= p["predicted_pm2_5"] <= p["confidence_upper"]
+
+
+def test_model_comparison_benchmark_metadata():
+    comparison = neural_predictor.get_model_comparison()
+    assert len(comparison) == 4
+    names = [c["model"] for c in comparison]
+    assert "Gradient Boosting (GBM)" in names
+    assert "PyTorch LSTM" in names
+    assert "PyTorch GRU" in names
+    assert "Temporal CNN (TCN)" in names
+    for m in comparison:
+        assert m["mae_1h"] > 0
+        assert m["r2_1h"] > 0
+        assert "latency_ms" in m
+

@@ -1,9 +1,10 @@
 """
-AirGuard AI - Sensor Calibration & Standard AQI Computation Module
+AirGuard AI - Sensor Calibration & Standard AQI Computation Module (FR-4.4, Section 2.2)
 Implements:
 1. Non-linear optical hygroscopic growth correction for PM2.5 (PMS5003).
 2. Temperature and humidity cross-calibration / baseline drift for metal-oxide VOC (SGP30).
-3. US EPA Standard AQI computation with piecewise linear interpolation.
+3. Device-specific dynamic zero-point baseline auto-calibration and gain compensation.
+4. US EPA Standard AQI computation with piecewise linear interpolation.
 """
 
 import math
@@ -11,72 +12,71 @@ from typing import Dict, Any, Tuple
 
 
 def calculate_absolute_humidity(temp_c: float, humidity_rh: float) -> float:
-    """
-    Computes absolute humidity in g/m^3 based on temperature (Celsius)
-    and relative humidity (%).
-    """
     if temp_c is None or humidity_rh is None:
         return 10.0
-    # Saturation vapor pressure in hPa
     svp = 6.112 * math.exp((17.62 * temp_c) / (243.12 + temp_c))
-    # Actual vapor pressure
     vp = (humidity_rh / 100.0) * svp
-    # Absolute humidity in g/m^3
     ah = 216.7 * (vp / (273.15 + temp_c))
     return max(0.1, ah)
 
 
-def calibrate_pm25(raw_pm25: float, humidity_rh: float, temp_c: float = 22.0) -> float:
+def calibrate_pm25(
+    raw_pm25: float,
+    humidity_rh: float,
+    temp_c: float = 22.0,
+    zero_offset: float = 0.0,
+    gain_scale: float = 1.0
+) -> float:
     """
-    Corrects optical PM2.5 hygroscopic swelling error.
-    Laser particle counters (like PMS5003) overestimate particulate mass
-    at high relative humidity (RH > 50%) due to hygroscopic aerosol growth.
-    Applies empirical polynomial kappa-Kohler correction:
-    CF = 1 + alpha * (RH / (100 - RH))^beta for RH > 50%
+    Corrects optical PM2.5 hygroscopic aerosol swelling.
+    Also applies device-specific zero offset and sensitivity gain factor.
     """
     if raw_pm25 is None or raw_pm25 < 0:
         return 0.0
+
+    # Adjust for device zero offset and gain
+    adjusted_raw = max(0.0, (raw_pm25 - zero_offset) * gain_scale)
+
     if humidity_rh is None:
-        return float(raw_pm25)
+        return round(float(adjusted_raw), 1)
 
-    # Clamping humidity to physical range
     rh = max(0.0, min(99.0, float(humidity_rh)))
-
     if rh <= 50.0:
-        # Minimal hygroscopic growth below 50% RH
-        return round(float(raw_pm25), 1)
+        return round(float(adjusted_raw), 1)
 
-    # Hygroscopic expansion factor
-    # For RH between 50% and 99%
     rh_norm = (rh - 50.0) / 50.0
     correction_factor = 1.0 + 0.35 * (rh_norm ** 2.0)
-    
-    calibrated = raw_pm25 / correction_factor
+    calibrated = adjusted_raw / correction_factor
     return round(max(0.0, calibrated), 1)
 
 
-def calibrate_voc(raw_voc_ppb: float, temp_c: float, humidity_rh: float) -> float:
+def calibrate_voc(
+    raw_voc_ppb: float,
+    temp_c: float,
+    humidity_rh: float,
+    zero_offset: float = 0.0,
+    gain_scale: float = 1.0
+) -> float:
     """
-    Compensates metal-oxide (MOX) VOC sensor (SGP30) for temperature and humidity drift.
-    Sensirion SGP30 baseline resistance shifts with absolute water vapor.
+    Compensates Sensirion SGP30 MOX sensor for absolute humidity and thermal drift.
+    Also applies baseline calibration offset.
     """
     if raw_voc_ppb is None or raw_voc_ppb < 0:
         return 0.0
-    
+
+    adjusted_raw = max(0.0, (raw_voc_ppb - zero_offset) * gain_scale)
+
     temp = 22.0 if temp_c is None else float(temp_c)
     rh = 50.0 if humidity_rh is None else float(humidity_rh)
 
-    # Baseline condition: 25°C, 50% RH -> AH approx 11.5 g/m^3
     target_ah = 11.5
     current_ah = calculate_absolute_humidity(temp, rh)
-
-    # Empirical sensitivity compensation: 1.2% shift per g/m^3 deviation
     compensation = 1.0 + 0.012 * (target_ah - current_ah)
-    calibrated = raw_voc_ppb * compensation
+    calibrated = adjusted_raw * compensation
     return round(max(0.0, calibrated), 1)
 
 
-# US EPA AQI Breakpoints (Concentration Breakpoints in ug/m3 for PM2.5 and PM10)
+# US EPA AQI Breakpoints
 PM25_BREAKPOINTS = [
     (0.0, 12.0, 0, 50),
     (12.1, 35.4, 51, 100),
@@ -95,29 +95,26 @@ PM10_BREAKPOINTS = [
     (425, 604, 301, 500)
 ]
 
-# Indoor CO2 Sub-index Breakpoints (ppm)
 CO2_BREAKPOINTS = [
-    (400, 700, 0, 50),        # Fresh outdoor air equivalent
-    (701, 1000, 51, 100),     # Acceptable indoor air
-    (1001, 1500, 101, 150),   # Drowsiness, poor air exchange
-    (1501, 2000, 151, 200),   # Headaches, lethargy, poor ventilation
-    (2001, 3000, 201, 300),   # Significant cognitive impairment
-    (3001, 5000, 301, 500)    # Hazardous occupational threshold
+    (400, 700, 0, 50),
+    (701, 1000, 51, 100),
+    (1001, 1500, 101, 150),
+    (1501, 2000, 151, 200),
+    (2001, 3000, 201, 300),
+    (3001, 5000, 301, 500)
 ]
 
-# VOC Sub-index Breakpoints (ppb)
 VOC_BREAKPOINTS = [
-    (0, 150, 0, 50),          # Clean indoor air
-    (151, 300, 51, 100),      # Normal indoor level
-    (301, 500, 101, 150),     # Elevated VOC, potential irritation
-    (501, 1000, 151, 200),    # Unhealthy chemical load
-    (1001, 2000, 201, 300),   # High solvent/chemical exposure
-    (2001, 5000, 301, 500)    # Hazardous VOC level
+    (0, 150, 0, 50),
+    (151, 300, 51, 100),
+    (301, 500, 101, 150),
+    (501, 1000, 151, 200),
+    (1001, 2000, 201, 300),
+    (2001, 5000, 301, 500)
 ]
 
 
 def _interpolate_aqi(val: float, breakpoints: list) -> int:
-    """Calculates linear piece-wise sub-index."""
     if val is None or val < 0:
         return 0
     for c_low, c_high, i_low, i_high in breakpoints:
@@ -130,45 +127,18 @@ def _interpolate_aqi(val: float, breakpoints: list) -> int:
 
 
 def get_aqi_category(aqi: int) -> Tuple[str, str, str]:
-    """
-    Returns (category_name, hex_color, health_advisory).
-    """
     if aqi <= 50:
-        return (
-            "Good",
-            "#10b981",  # Emerald Green
-            "Air quality is ideal. Enjoy normal indoor and outdoor activities."
-        )
+        return ("Good", "#10b981", "Air quality is ideal. Enjoy normal indoor and outdoor activities.")
     elif aqi <= 100:
-        return (
-            "Moderate",
-            "#eab308",  # Amber / Yellow
-            "Air quality is acceptable. Unusually sensitive individuals should monitor symptoms."
-        )
+        return ("Moderate", "#eab308", "Air quality is acceptable. Sensitive individuals should monitor symptoms.")
     elif aqi <= 150:
-        return (
-            "Unhealthy for Sensitive Groups",
-            "#f97316",  # Orange
-            "Members of sensitive groups may experience health effects. General public not likely affected."
-        )
+        return ("Unhealthy for Sensitive Groups", "#f97316", "Members of sensitive groups may experience health effects.")
     elif aqi <= 200:
-        return (
-            "Unhealthy",
-            "#ef4444",  # Red
-            "Everyone may begin to experience health effects. Activate air purifiers or increase ventilation."
-        )
+        return ("Unhealthy", "#ef4444", "Everyone may begin to experience health effects. Increase ventilation.")
     elif aqi <= 300:
-        return (
-            "Very Unhealthy",
-            "#a855f7",  # Purple
-            "Health alert: risk of health effects increased for everyone. Avoid indoor physical exertion."
-        )
+        return ("Very Unhealthy", "#a855f7", "Health alert: risk of health effects increased for all occupants.")
     else:
-        return (
-            "Hazardous",
-            "#881337",  # Maroon
-            "Emergency conditions: serious risk of respiratory impact. Take immediate remediation."
-        )
+        return ("Hazardous", "#881337", "Emergency conditions: serious risk of respiratory impact.")
 
 
 def compute_comprehensive_aqi(
@@ -177,10 +147,6 @@ def compute_comprehensive_aqi(
     co2: float = None,
     voc: float = None
 ) -> Dict[str, Any]:
-    """
-    Computes overall composite AQI as the maximum of individual pollutant sub-indices,
-    identifying the dominant pollutant and status category.
-    """
     sub_indices = {}
     if pm25 is not None:
         sub_indices["PM2.5"] = _interpolate_aqi(pm25, PM25_BREAKPOINTS)

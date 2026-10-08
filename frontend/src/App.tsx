@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
+import type {
   Device,
   Telemetry,
   PredictionData,
@@ -15,6 +15,7 @@ import {
   fetchAlerts,
   acknowledgeAlert,
   acknowledgeAllAlerts,
+  convertAlertToAction,
   fetchActiveAction,
   logRemediationAction,
   resolveRemediationAction,
@@ -29,11 +30,14 @@ import { MultiRoomHeatmap } from "./components/MultiRoomHeatmap";
 import { ActionTracker } from "./components/ActionTracker";
 import { AlertCenter } from "./components/AlertCenter";
 import { SimulatorControls } from "./components/SimulatorControls";
+import { SpatialFloorplan } from "./components/SpatialFloorplan";
+import { ModelComparisonModal } from "./components/ModelComparisonModal";
+import { DeviceCalibrationModal } from "./components/DeviceCalibrationModal";
 
 export const App: React.FC = () => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("AG-001");
-  const [modelType, setModelType] = useState<"baseline" | "neural">("baseline");
+  const [modelType, setModelType] = useState<string>("baseline");
 
   // Telemetry state
   const [latestTelemetryMap, setLatestTelemetryMap] = useState<Record<string, Telemetry>>({});
@@ -46,10 +50,13 @@ export const App: React.FC = () => {
   const [activeAction, setActiveAction] = useState<RemediationAction | null>(null);
   const [actionHistory, setActionHistory] = useState<RemediationAction[]>([]);
 
-  // Modals
+  // Modals & Panels
   const [isAlertCenterOpen, setIsAlertCenterOpen] = useState(false);
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [isModelComparisonOpen, setIsModelComparisonOpen] = useState(false);
+  const [isCalibrationOpen, setIsCalibrationOpen] = useState(false);
+  const [showFloorplan, setShowFloorplan] = useState(true);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -74,7 +81,7 @@ export const App: React.FC = () => {
   }, []);
 
   // 2. Fetch data for selected room
-  const loadRoomData = useCallback(async (devId: string, model: "baseline" | "neural") => {
+  const loadRoomData = useCallback(async (devId: string, model: string) => {
     try {
       const [hist, preds, diag, act] = await Promise.all([
         fetchHistory(devId, 40).catch(() => []),
@@ -160,6 +167,24 @@ export const App: React.FC = () => {
     setAlerts((prev) => prev.map((a) => ({ ...a, acknowledged: true })));
   };
 
+  const handleConvertAlertToAction = async (alertId: number) => {
+    try {
+      const act = await convertAlertToAction(alertId);
+      setActiveAction(act);
+      setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, acknowledged: true } : a)));
+      setIsAlertCenterOpen(false);
+      showToast(`⚡ Converted Alert #${alertId} into tracked Remediation!`);
+    } catch (e: any) {
+      showToast(`Error starting remediation: ${e.message}`);
+    }
+  };
+
+  const handleDeviceCalibrated = (updated: Device) => {
+    setDevices((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    showToast(`Device ${updated.id} calibration parameters updated!`);
+    loadRoomData(selectedDeviceId, modelType);
+  };
+
   const handleLogAction = async (actionType: string, desc: string) => {
     const act = await logRemediationAction(selectedDeviceId, actionType, desc);
     setActiveAction(act);
@@ -203,11 +228,15 @@ export const App: React.FC = () => {
         onSelectDevice={setSelectedDeviceId}
         isConnected={isConnected}
         modelType={modelType}
-        onToggleModel={setModelType}
+        onSelectModel={(m) => setModelType(m)}
         alerts={alerts}
         onOpenAlerts={() => setIsAlertCenterOpen(true)}
         onOpenSimulator={() => setIsSimulatorOpen(true)}
         onOpenActionModal={() => setIsActionModalOpen(true)}
+        onOpenModelComparison={() => setIsModelComparisonOpen(true)}
+        onOpenCalibration={() => setIsCalibrationOpen(true)}
+        showFloorplan={showFloorplan}
+        onToggleFloorplan={() => setShowFloorplan((v) => !v)}
       />
 
       {/* Main Content Area */}
@@ -222,6 +251,16 @@ export const App: React.FC = () => {
           isOpenModal={isActionModalOpen}
           onCloseModal={() => setIsActionModalOpen(false)}
         />
+
+        {/* 2D Interactive Blueprint Spatial Floorplan (Toggleable) */}
+        {showFloorplan && (
+          <SpatialFloorplan
+            devices={devices}
+            selectedDeviceId={selectedDeviceId}
+            onSelectDevice={setSelectedDeviceId}
+            latestTelemetryMap={latestTelemetryMap}
+          />
+        )}
 
         {/* Top Split: Live AQI Gauge (Left) + Sensor Metrics Grid (Right) */}
         <div style={{
@@ -280,6 +319,7 @@ export const App: React.FC = () => {
         onClose={() => setIsAlertCenterOpen(false)}
         onAcknowledge={handleAcknowledgeAlert}
         onAcknowledgeAll={handleAcknowledgeAll}
+        onConvertToAction={handleConvertAlertToAction}
       />
 
       <SimulatorControls
@@ -290,6 +330,19 @@ export const App: React.FC = () => {
           showToast(msg);
           loadRoomData(selectedDeviceId, modelType);
         }}
+      />
+
+      <ModelComparisonModal
+        deviceId={selectedDeviceId}
+        isOpen={isModelComparisonOpen}
+        onClose={() => setIsModelComparisonOpen(false)}
+      />
+
+      <DeviceCalibrationModal
+        device={selectedDevice || null}
+        isOpen={isCalibrationOpen}
+        onClose={() => setIsCalibrationOpen(false)}
+        onCalibrationSaved={handleDeviceCalibrated}
       />
 
     </div>

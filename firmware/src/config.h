@@ -1,5 +1,11 @@
 /**
- * AirGuard AI - ESP32 Hardware Pinouts & Network Configuration (FR-1, FR-2)
+ * AirGuard AI - ESP32 Hardware Pinouts & Network Configuration (FR-1, FR-2, Section 2.1)
+ * Enhanced with Optional Hardware Expansion Modules:
+ * - BMP280 Barometric Pressure & Altitude
+ * - NEO-6M GPS Spatial Tracking
+ * - Ambient Light & Acoustic Noise Sensors
+ * - MicroSD Card SPI Offline Data Logging
+ * - Li-Po Battery Monitoring & Deep Sleep Power Management
  */
 
 #pragma once
@@ -7,11 +13,11 @@
 #include <Arduino.h>
 
 // ==========================================
-// Device Identity
+// Device Identity & Room Location
 // ==========================================
 #define DEVICE_ID           "AG-001"
 #define DEVICE_ROOM         "Master Bedroom"
-#define FIRMWARE_VERSION    "v1.2.0"
+#define FIRMWARE_VERSION    "v1.3.0-EXP"
 
 // ==========================================
 // Wi-Fi & MQTT Broker Configuration
@@ -25,9 +31,9 @@
 #define MQTT_TOPIC_SUB      "airguard/" DEVICE_ID "/command"
 
 // ==========================================
-// Hardware Pinout Definitions (ESP32)
+// Primary Sensor Pinout Definitions (ESP32)
 // ==========================================
-// I2C Bus (SHT31 @ 0x44, SGP30 @ 0x58, SSD1306 OLED @ 0x3C)
+// Shared I2C Bus (SHT31 @ 0x44, SGP30 @ 0x58, BMP280 @ 0x76, SSD1306 @ 0x3C)
 #define I2C_SDA_PIN         21
 #define I2C_SCL_PIN         22
 
@@ -45,11 +51,32 @@
 #define RGB_BLUE_PIN        27
 #define BUZZER_PIN          13
 
-// Battery Voltage ADC Monitor (FR-1.4)
+// ==========================================
+// Expanded Hardware Modules (Section 2.1)
+// ==========================================
+// Ambient Light Sensor (TEMT6000 / Photodiode ADC)
+#define AMBIENT_LIGHT_ADC   35
+
+// Indoor Acoustic / Noise Sensor (Microphone ADC)
+#define NOISE_SENSOR_ADC    32
+
+// Battery Voltage Divider Monitor (3.7V Li-Po via 2x100k divider)
 #define BATTERY_ADC_PIN     34
 
+// MicroSD Card Module SPI
+#define SD_CS_PIN           5
+#define SD_MOSI_PIN         23
+#define SD_MISO_PIN         19
+#define SD_SCK_PIN          18
+
+// GPS Module (NEO-6M SoftwareSerial or UART3)
+#define GPS_RX_PIN          4
+#define GPS_TX_PIN          2
+
 // ==========================================
-// Timing & Sampling Constants
+// Power Management & Timing Constants
 // ==========================================
-#define TELEMETRY_INTERVAL_MS   2000    // Stream every 2 seconds (FR-1.1, US-01)
-#define MAX_OFFLINE_QUEUE_ITEMS 500     // SPI Flash buffer entries (FR-2.3)
+#define TELEMETRY_INTERVAL_MS   2000    // Normal sampling interval (2s)
+#define BATTERY_SAVER_SLEEP_S   60      // Deep sleep interval when battery powered
+#define MAX_OFFLINE_QUEUE_ITEMS 500     // In-memory circular buffer count
+#define SD_LOG_FILE             "/airguard_data.csv"

@@ -1,10 +1,16 @@
 """
-AirGuard AI - Telemetry Ingestion & Query API (FR-3.3, FR-3.4, NFR-1)
+AirGuard AI - Telemetry Ingestion & Query API (FR-3.3, FR-3.4, NFR-1, Section 2.1, 2.3)
+Enhanced with:
+- Expanded sensor parameters: Barometric Pressure, Ambient Light, Noise Level, Battery %
+- Device-specific zero offset & gain calibration
+- CSV telemetry export for environmental compliance & reporting
 """
 
 from datetime import datetime
+import io
+import csv
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
@@ -13,37 +19,22 @@ from backend.app.schemas import TelemetryPayload, TelemetryResponse
 from backend.app.ml.calibration import calibrate_pm25, calibrate_voc, compute_comprehensive_aqi
 from backend.app.ml.anomaly_engine import anomaly_engine
 from backend.app.websocket_manager import ws_manager
-from backend.app.config import settings
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
 @router.post("/ingest", response_model=TelemetryResponse)
 async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends(get_db)):
-    """
-    Ingests raw sensor stream from ESP32 edge node or virtual simulator.
-    Performs non-linear cross-calibration, computes EPA AQI, detects anomalies,
-    updates devices, and broadcasts via WebSockets (<1s latency).
-    """
     ts = payload.timestamp or datetime.utcnow()
 
-    # 1. Non-linear calibration
-    cal_pm25 = calibrate_pm25(payload.pm2_5, payload.humidity, payload.temperature)
-    cal_voc = calibrate_voc(payload.voc, payload.temperature, payload.humidity)
-
-    # 2. Comprehensive EPA AQI computation
-    aqi_result = compute_comprehensive_aqi(
-        pm25=cal_pm25,
-        pm10=payload.pm10,
-        co2=payload.co2,
-        voc=cal_voc
-    )
-
-    # 3. Ensure device exists in database
+    # 1. Fetch device calibration factors if device exists
     dev_query = await db.execute(select(Device).where(Device.id == payload.device_id))
     device = dev_query.scalar_one_or_none()
+    
+    pm_offset, pm_gain = 0.0, 1.0
+    voc_offset, voc_gain = 0.0, 1.0
+
     if not device:
-        # Auto-register new node
         device = Device(
             id=payload.device_id,
             name=f"AirGuard Node ({payload.device_id})",
@@ -55,8 +46,36 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
     else:
         device.is_online = True
         device.last_seen = ts
+        pm_offset = device.pm_zero_offset or 0.0
+        pm_gain = device.pm_gain or 1.0
+        voc_offset = device.voc_zero_offset or 0.0
+        voc_gain = device.voc_gain or 1.0
 
-    # 4. Save Telemetry record
+    # 2. Non-linear calibration with device gain/offset
+    cal_pm25 = calibrate_pm25(
+        raw_pm25=payload.pm2_5,
+        humidity_rh=payload.humidity,
+        temp_c=payload.temperature,
+        zero_offset=pm_offset,
+        gain_scale=pm_gain
+    )
+    cal_voc = calibrate_voc(
+        raw_voc_ppb=payload.voc,
+        temp_c=payload.temperature,
+        humidity_rh=payload.humidity,
+        zero_offset=voc_offset,
+        gain_scale=voc_gain
+    )
+
+    # 3. Comprehensive EPA AQI computation
+    aqi_result = compute_comprehensive_aqi(
+        pm25=cal_pm25,
+        pm10=payload.pm10,
+        co2=payload.co2,
+        voc=cal_voc
+    )
+
+    # 4. Save Telemetry record with expanded metrics
     telemetry_record = Telemetry(
         device_id=payload.device_id,
         timestamp=ts,
@@ -67,6 +86,9 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         temperature=payload.temperature,
         humidity=payload.humidity,
         pressure=payload.pressure or 1013.25,
+        ambient_light=payload.ambient_light or 150.0,
+        noise_level=payload.noise_level or 42.0,
+        battery_pct=payload.battery_pct or 95,
         calibrated_pm2_5=cal_pm25,
         calibrated_voc=cal_voc,
         aqi=aqi_result["aqi"],
@@ -75,14 +97,17 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
     )
     db.add(telemetry_record)
 
-    # 5. Anomaly Detection & Root-Cause Diagnosis
+    # 5. Context-aware Anomaly Detection
     current_metrics = {
         "pm2_5": cal_pm25,
         "pm10": payload.pm10,
         "co2": payload.co2,
         "voc": cal_voc,
         "temperature": payload.temperature,
-        "humidity": payload.humidity
+        "humidity": payload.humidity,
+        "pressure": payload.pressure,
+        "ambient_light": payload.ambient_light,
+        "noise_level": payload.noise_level
     }
     diag = anomaly_engine.detect_anomalies_and_diagnose(current_metrics)
 
@@ -100,21 +125,20 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         )
         db.add(anomaly_record)
 
-        # Trigger Smart Alert (FR-5)
         alert_level = "CRITICAL" if diag["severity"] == "CRITICAL" else "WARNING"
         alert_record = Alert(
             device_id=payload.device_id,
             timestamp=ts,
             level=alert_level,
             channel="DASHBOARD",
-            title=f"{diag['root_cause_title']} Detected ({payload.device_id})",
+            title=f"{diag['root_cause_title']} ({payload.device_id})",
             message=diag["description"],
             recommendation=diag["recommendation"]
         )
         db.add(alert_record)
 
-        # Push immediate WebSocket alert
         await ws_manager.broadcast_alert({
+            "id": 9999,
             "device_id": payload.device_id,
             "title": alert_record.title,
             "level": alert_level,
@@ -123,23 +147,21 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
             "timestamp": ts.isoformat()
         })
 
-    # 6. Update Active Remediation Actions (Closed-Loop Tracker FR-6.2)
+    # 6. Update Active Remediation Actions
     act_query = await db.execute(
         select(RemediationAction).where(
             RemediationAction.device_id == payload.device_id,
             RemediationAction.is_active == True
         )
     )
-    active_action = act_query.scalar_one_or_none()
-    if active_action:
+    active_actions = act_query.scalars().all()
+    for active_action in active_actions:
         active_action.current_aqi = aqi_result["aqi"]
         if aqi_result["aqi"] <= active_action.target_aqi + 5:
-            # Resolved!
             active_action.is_active = False
             active_action.resolved_at = ts
             duration = (ts - active_action.timestamp).total_seconds() / 60.0
             active_action.recovery_duration_mins = round(duration, 1)
-            # Efficacy score: reduction relative to initial delta
             reduction = active_action.initial_aqi - aqi_result["aqi"]
             initial_delta = max(1, active_action.initial_aqi - active_action.target_aqi)
             active_action.efficacy_score = round(min(100.0, max(0.0, (reduction / initial_delta) * 100.0)), 1)
@@ -147,7 +169,7 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
     await db.commit()
     await db.refresh(telemetry_record)
 
-    # 7. Sub-second WebSocket Broadcast (NFR-1)
+    # 7. Sub-second WebSocket Broadcast
     broadcast_data = {
         "type": "TELEMETRY_UPDATE",
         "device_id": payload.device_id,
@@ -158,7 +180,10 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         "voc": payload.voc,
         "temperature": payload.temperature,
         "humidity": payload.humidity,
-        "pressure": payload.pressure,
+        "pressure": telemetry_record.pressure,
+        "ambient_light": telemetry_record.ambient_light,
+        "noise_level": telemetry_record.noise_level,
+        "battery_pct": telemetry_record.battery_pct,
         "calibrated_pm2_5": cal_pm25,
         "calibrated_voc": cal_voc,
         "aqi": aqi_result["aqi"],
@@ -174,7 +199,6 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
 
 @router.get("/latest/{device_id}", response_model=TelemetryResponse)
 async def get_latest_telemetry(device_id: str, db: AsyncSession = Depends(get_db)):
-    """Retrieves the most recent telemetry measurement for a specific device."""
     query = await db.execute(
         select(Telemetry)
         .where(Telemetry.device_id == device_id)
@@ -193,7 +217,6 @@ async def get_telemetry_history(
     limit: int = Query(60, ge=5, le=500),
     db: AsyncSession = Depends(get_db)
 ):
-    """Retrieves historical chronological telemetry for trend charts."""
     query = await db.execute(
         select(Telemetry)
         .where(Telemetry.device_id == device_id)
@@ -201,5 +224,38 @@ async def get_telemetry_history(
         .limit(limit)
     )
     records = query.scalars().all()
-    # Return chronologically ascending for charts
     return list(reversed(records))
+
+
+@router.get("/export/{device_id}")
+async def export_telemetry_csv(device_id: str, db: AsyncSession = Depends(get_db)):
+    """Exports historical telemetry as downloadable CSV (Section 2.1)."""
+    query = await db.execute(
+        select(Telemetry)
+        .where(Telemetry.device_id == device_id)
+        .order_by(desc(Telemetry.timestamp))
+        .limit(2000)
+    )
+    records = query.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "timestamp", "device_id", "pm2_5", "pm10", "co2", "voc",
+        "temperature", "humidity", "pressure", "ambient_light", "noise_level",
+        "calibrated_pm2_5", "calibrated_voc", "aqi", "aqi_category"
+    ])
+
+    for r in reversed(records):
+        writer.writerow([
+            r.timestamp.isoformat(), r.device_id, r.pm2_5, r.pm10, r.co2, r.voc,
+            r.temperature, r.humidity, r.pressure, r.ambient_light, r.noise_level,
+            r.calibrated_pm2_5, r.calibrated_voc, r.aqi, r.aqi_category
+        ])
+
+    csv_data = output.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=airguard_{device_id}_export.csv"}
+    )

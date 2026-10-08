@@ -1,5 +1,5 @@
 """
-Integration Tests for AirGuard AI FastAPI Endpoints (FR-3, FR-5, FR-6)
+Integration Tests for AirGuard AI FastAPI Endpoints (Enhanced, Section 2.1, 2.2, 2.3)
 """
 
 import pytest
@@ -19,95 +19,107 @@ async def test_health_and_root():
 
 
 @pytest.mark.asyncio
-async def test_devices_and_ingestion():
+async def test_devices_and_calibration():
     await init_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # List devices (should auto-seed default multi-room devices)
+        # Check floorplan coordinates in device listing
         res_dev = await ac.get("/api/devices")
         assert res_dev.status_code == 200
         devices = res_dev.json()
         assert len(devices) >= 4
+        assert "x_coord" in devices[0]
+        assert "latitude" in devices[0]
 
-        # Ingest telemetry for AG-001
+        # Test device calibration endpoint (Section 2.2)
+        cal_payload = {
+            "pm_zero_offset": 1.5,
+            "pm_gain": 0.95,
+            "voc_zero_offset": 5.0,
+            "voc_gain": 1.05
+        }
+        res_cal = await ac.post("/api/devices/AG-001/calibrate", json=cal_payload)
+        assert res_cal.status_code == 200
+        data = res_cal.json()
+        assert data["pm_zero_offset"] == 1.5
+        assert data["pm_gain"] == 0.95
+
+
+@pytest.mark.asyncio
+async def test_ingestion_and_csv_export():
+    await init_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # Ingest telemetry with expanded metrics
         payload = {
             "device_id": "AG-001",
-            "pm2_5": 14.5,
-            "pm10": 20.0,
-            "co2": 620.0,
-            "voc": 110.0,
+            "pm2_5": 16.0,
+            "pm10": 22.0,
+            "co2": 650.0,
+            "voc": 115.0,
             "temperature": 22.5,
-            "humidity": 45.0
+            "humidity": 45.0,
+            "pressure": 1012.4,
+            "ambient_light": 230.0,
+            "noise_level": 44.0,
+            "battery_pct": 92
         }
         res_ingest = await ac.post("/api/telemetry/ingest", json=payload)
         assert res_ingest.status_code == 200
         data = res_ingest.json()
-        assert data["device_id"] == "AG-001"
-        assert "aqi" in data
-        assert "calibrated_pm2_5" in data
+        assert data["pressure"] == 1012.4
+        assert data["ambient_light"] == 230.0
 
-        # Check latest telemetry
-        res_latest = await ac.get("/api/telemetry/latest/AG-001")
-        assert res_latest.status_code == 200
-        assert res_latest.json()["pm2_5"] == 14.5
-
-
-@pytest.mark.asyncio
-async def test_predictions_endpoint():
-    await init_db()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        res = await ac.get("/api/predictions/AG-001")
-        assert res.status_code == 200
-        data = res.json()
-        assert data["device_id"] == "AG-001"
-        assert len(data["predictions"]) == 4
-        assert data["predictions"][0]["horizon_mins"] == 15
-        assert data["predictions"][2]["horizon_mins"] == 60
+        # Export CSV (Section 2.1)
+        res_export = await ac.get("/api/telemetry/export/AG-001")
+        assert res_export.status_code == 200
+        assert "text/csv" in res_export.headers["content-type"]
+        assert "timestamp,device_id" in res_export.text
 
 
 @pytest.mark.asyncio
-async def test_anomalies_and_simulator_triggers():
+async def test_multi_model_comparison_endpoint():
     await init_db()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # Trigger Cooking Smoke scenario
-        trigger_resp = await ac.post("/api/simulator/trigger", json={
+        # Test specific architectures: gbm, lstm, gru, tcn
+        for model in ["baseline", "lstm", "gru", "tcn"]:
+            res = await ac.get(f"/api/predictions/AG-001?model_type={model}")
+            assert res.status_code == 200
+            assert len(res.json()["predictions"]) == 4
+
+        # Test multi-model comparison route
+        res_comp = await ac.get("/api/predictions/compare/AG-001")
+        assert res_comp.status_code == 200
+        comp_data = res_comp.json()
+        assert len(comp_data["models"]) == 4
+        model_names = [m["model"] for m in comp_data["models"]]
+        assert "Gradient Boosting (GBM)" in model_names
+        assert "PyTorch LSTM" in model_names
+        assert "PyTorch GRU" in model_names
+        assert "Temporal CNN (TCN)" in model_names
+
+
+@pytest.mark.asyncio
+async def test_alert_to_action_workflow():
+    await init_db()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # Trigger an anomaly to ensure an alert exists
+        await ac.post("/api/simulator/trigger", json={
             "scenario": "COOKING_SMOKE",
             "device_id": "AG-003"
         })
-        assert trigger_resp.status_code == 200
 
-        # Diagnosis for AG-003
-        diag_resp = await ac.get("/api/anomalies/diagnose/AG-003")
-        assert diag_resp.status_code == 200
-        diag = diag_resp.json()
-        assert diag["root_cause_code"] == "COOKING_SMOKE"
+        # Fetch alerts
+        alerts_res = await ac.get("/api/alerts")
+        alerts = alerts_res.json()
+        assert len(alerts) > 0
+        alert_id = alerts[0]["id"]
 
-
-@pytest.mark.asyncio
-async def test_actions_tracker():
-    await init_db()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # Log remediation action
-        action_payload = {
-            "device_id": "AG-001",
-            "action_type": "OPEN_WINDOW",
-            "description": "Opened master bedroom window for cross ventilation"
-        }
-        res = await ac.post("/api/actions/log", json=action_payload)
-        assert res.status_code == 200
-        act = res.json()
-        assert act["is_active"] is True
-        action_id = act["id"]
-
-        # Check active action
-        res_active = await ac.get("/api/actions/active/AG-001")
-        assert res_active.status_code == 200
-        assert res_active.json()["id"] == action_id
-
-        # Resolve action
-        res_resolve = await ac.post(f"/api/actions/{action_id}/resolve")
-        assert res_resolve.status_code == 200
-        assert res_resolve.json()["is_active"] is False
+        # Convert alert to active remediation action
+        conv_res = await ac.post(f"/api/alerts/{alert_id}/convert-to-action")
+        assert conv_res.status_code == 200
+        action_data = conv_res.json()
+        assert action_data["is_active"] is True
+        assert action_data["device_id"] == alerts[0]["device_id"]

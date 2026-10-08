@@ -1,5 +1,5 @@
 """
-AirGuard AI - Pydantic Request & Response Data Schemas
+AirGuard AI - Pydantic Request & Response Data Schemas (Enhanced)
 """
 
 from datetime import datetime
@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class TelemetryPayload(BaseModel):
-    """Payload received from IoT Edge Node (FR-3.3)"""
     device_id: str = Field(..., example="AG-001")
     timestamp: Optional[datetime] = None
     pm2_5: float = Field(..., ge=0, example=12.5)
@@ -21,7 +20,14 @@ class TelemetryPayload(BaseModel):
     voc: float = Field(..., ge=0, example=145.0)
     temperature: float = Field(..., example=22.4)
     humidity: float = Field(..., ge=0, le=100, example=48.2)
+    
+    # Expanded Sensor Suite (Section 2.1)
     pressure: Optional[float] = Field(1013.25, example=1012.8)
+    ambient_light: Optional[float] = Field(150.0, example=220.0)
+    noise_level: Optional[float] = Field(42.0, example=45.0)
+    battery_pct: Optional[int] = Field(95, example=88)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class TelemetryResponse(BaseModel):
@@ -35,6 +41,9 @@ class TelemetryResponse(BaseModel):
     temperature: float
     humidity: float
     pressure: Optional[float]
+    ambient_light: Optional[float]
+    noise_level: Optional[float]
+    battery_pct: Optional[int]
     calibrated_pm2_5: float
     calibrated_voc: float
     aqi: int
@@ -46,7 +55,7 @@ class TelemetryResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Device Schemas
+# Device Schemas & Calibration (Section 2.2, 2.3)
 # ---------------------------------------------------------------------------
 
 class DeviceCreate(BaseModel):
@@ -54,9 +63,18 @@ class DeviceCreate(BaseModel):
     name: str = Field(..., example="Master Bedroom Sensor")
     room: str = Field(..., example="Bedroom")
     floor: Optional[str] = "Floor 1"
-    firmware_version: Optional[str] = "v1.2.0"
+    firmware_version: Optional[str] = "v1.3.0-EXP"
     ip_address: Optional[str] = "192.168.1.101"
     mac_address: Optional[str] = "24:6F:28:AB:CD:01"
+    x_coord: Optional[float] = 25.0
+    y_coord: Optional[float] = 30.0
+
+
+class DeviceCalibrationRequest(BaseModel):
+    pm_zero_offset: Optional[float] = Field(0.0, description="PM2.5 baseline zero-point shift")
+    pm_gain: Optional[float] = Field(1.0, description="PM2.5 optical gain scaling factor")
+    voc_zero_offset: Optional[float] = Field(0.0, description="VOC baseline zero-point shift")
+    voc_gain: Optional[float] = Field(1.0, description="VOC sensitivity gain scaling factor")
 
 
 class DeviceResponse(BaseModel):
@@ -69,6 +87,14 @@ class DeviceResponse(BaseModel):
     firmware_version: str
     ip_address: str
     mac_address: str
+    x_coord: Optional[float] = 25.0
+    y_coord: Optional[float] = 30.0
+    latitude: Optional[float] = 37.7749
+    longitude: Optional[float] = -122.4194
+    pm_zero_offset: Optional[float] = 0.0
+    pm_gain: Optional[float] = 1.0
+    voc_zero_offset: Optional[float] = 0.0
+    voc_gain: Optional[float] = 1.0
     latest_telemetry: Optional[TelemetryResponse] = None
 
     class Config:
@@ -76,7 +102,7 @@ class DeviceResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Prediction Schemas
+# Prediction & Multi-Model Comparison Schemas (Section 2.2)
 # ---------------------------------------------------------------------------
 
 class HorizonPrediction(BaseModel):
@@ -103,8 +129,25 @@ class PredictionResponse(BaseModel):
     predictions: List[HorizonPrediction]
 
 
+class ModelBenchmarkItem(BaseModel):
+    model: str
+    architecture: str
+    mae_1h: float
+    r2_1h: float
+    params: str
+    latency_ms: float
+    predictions: List[HorizonPrediction]
+
+
+class MultiModelComparisonResponse(BaseModel):
+    device_id: str
+    current_aqi: int
+    generated_at: datetime
+    models: List[ModelBenchmarkItem]
+
+
 # ---------------------------------------------------------------------------
-# Anomaly & Root Cause Schemas
+# Anomaly & Alert Schemas
 # ---------------------------------------------------------------------------
 
 class AnomalyResponse(BaseModel):
@@ -124,10 +167,6 @@ class AnomalyResponse(BaseModel):
         from_attributes = True
 
 
-# ---------------------------------------------------------------------------
-# Alert Schemas
-# ---------------------------------------------------------------------------
-
 class AlertResponse(BaseModel):
     id: int
     device_id: str
@@ -144,12 +183,12 @@ class AlertResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Remediation Action Schemas (Closed-Loop Tracker FR-6.2)
+# Remediation Action Schemas (Closed-Loop Tracker)
 # ---------------------------------------------------------------------------
 
 class ActionCreate(BaseModel):
     device_id: str
-    action_type: str  # "OPEN_WINDOW", "HEPA_PURIFIER", "EXHAUST_HOOD", "HVAC_FRESH_AIR"
+    action_type: str
     description: str
 
 

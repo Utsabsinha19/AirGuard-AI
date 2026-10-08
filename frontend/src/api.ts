@@ -2,6 +2,7 @@ import type {
   Device,
   Telemetry,
   PredictionData,
+  MultiModelComparisonData,
   AnomalyDiagnosis,
   AlertItem,
   RemediationAction,
@@ -29,10 +30,29 @@ export async function fetchHistory(deviceId: string, limit = 60): Promise<Teleme
 
 export async function fetchPredictions(
   deviceId: string,
-  modelType: "baseline" | "neural" = "baseline"
+  modelType: string = "baseline"
 ): Promise<PredictionData> {
   const res = await fetch(`${API_BASE}/predictions/${deviceId}?model_type=${modelType}`);
   if (!res.ok) throw new Error("Failed to fetch predictions");
+  return res.json();
+}
+
+export async function fetchModelComparison(deviceId: string): Promise<MultiModelComparisonData> {
+  const res = await fetch(`${API_BASE}/predictions/compare/${deviceId}`);
+  if (!res.ok) throw new Error("Failed to fetch multi-model comparison");
+  return res.json();
+}
+
+export async function calibrateDevice(
+  deviceId: string,
+  params: { pm_zero_offset?: number; pm_gain?: number; voc_zero_offset?: number; voc_gain?: number }
+): Promise<Device> {
+  const res = await fetch(`${API_BASE}/devices/${deviceId}/calibrate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error("Failed to calibrate device");
   return res.json();
 }
 
@@ -57,6 +77,12 @@ export async function acknowledgeAlert(alertId: number): Promise<AlertItem> {
 export async function acknowledgeAllAlerts(): Promise<void> {
   const res = await fetch(`${API_BASE}/alerts/ack-all`, { method: "POST" });
   if (!res.ok) throw new Error("Failed to acknowledge all alerts");
+}
+
+export async function convertAlertToAction(alertId: number): Promise<RemediationAction> {
+  const res = await fetch(`${API_BASE}/alerts/${alertId}/convert-to-action`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to convert alert to action");
+  return res.json();
 }
 
 export async function fetchActiveAction(deviceId: string): Promise<RemediationAction | null> {
@@ -100,4 +126,8 @@ export async function triggerSimulatorScenario(
   });
   if (!res.ok) throw new Error("Failed to trigger simulation scenario");
   return res.json();
+}
+
+export function getExportCSVUrl(deviceId: string): string {
+  return `${API_BASE}/telemetry/export/${deviceId}`;
 }

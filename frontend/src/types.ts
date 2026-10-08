@@ -9,6 +9,9 @@ export interface Telemetry {
   temperature: number;
   humidity: number;
   pressure?: number;
+  ambient_light?: number;
+  noise_level?: number;
+  battery_pct?: number;
   calibrated_pm2_5: number;
   calibrated_voc: number;
   aqi: number;
@@ -28,6 +31,14 @@ export interface Device {
   firmware_version: string;
   ip_address: string;
   mac_address: string;
+  x_coord?: number;
+  y_coord?: number;
+  latitude?: number;
+  longitude?: number;
+  pm_zero_offset?: number;
+  pm_gain?: number;
+  voc_zero_offset?: number;
+  voc_gain?: number;
   latest_telemetry?: Telemetry;
 }
 
@@ -54,6 +65,23 @@ export interface PredictionData {
   predictions: HorizonPrediction[];
 }
 
+export interface ModelBenchmarkItem {
+  model: string;
+  architecture: string;
+  mae_1h: number;
+  r2_1h: number;
+  params: string;
+  latency_ms: number;
+  predictions: HorizonPrediction[];
+}
+
+export interface MultiModelComparisonData {
+  device_id: string;
+  current_aqi: number;
+  generated_at: string;
+  models: ModelBenchmarkItem[];
+}
+
 export interface AnomalyDiagnosis {
   is_anomaly: boolean;
   anomaly_score: number;
@@ -73,6 +101,9 @@ export interface AnomalyDiagnosis {
     voc: number;
     temperature: number;
     humidity: number;
+    pressure?: number;
+    noise_level?: number;
+    ambient_light?: number;
     z_pm2_5: number;
     z_co2: number;
     z_voc: number;
