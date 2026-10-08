@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  # MQTT Broker (FR-3.3, NFR-4)
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: airguard_mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  # FastAPI Backend & AI Predictive Engine
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: airguard_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./airguard.db
+      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_PORT=1883
+      - ENABLE_MQTT_SUBSCRIBER=true
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+  # React + TypeScript Frontend Client
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: airguard_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

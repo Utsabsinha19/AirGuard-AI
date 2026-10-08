@@ -1,0 +1,103 @@
+import type {
+  Device,
+  Telemetry,
+  PredictionData,
+  AnomalyDiagnosis,
+  AlertItem,
+  RemediationAction,
+} from "./types";
+
+const API_BASE = "http://127.0.0.1:8000/api";
+
+export async function fetchDevices(): Promise<Device[]> {
+  const res = await fetch(`${API_BASE}/devices`);
+  if (!res.ok) throw new Error("Failed to fetch devices");
+  return res.json();
+}
+
+export async function fetchLatestTelemetry(deviceId: string): Promise<Telemetry> {
+  const res = await fetch(`${API_BASE}/telemetry/latest/${deviceId}`);
+  if (!res.ok) throw new Error("Failed to fetch latest telemetry");
+  return res.json();
+}
+
+export async function fetchHistory(deviceId: string, limit = 60): Promise<Telemetry[]> {
+  const res = await fetch(`${API_BASE}/telemetry/history/${deviceId}?limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch history");
+  return res.json();
+}
+
+export async function fetchPredictions(
+  deviceId: string,
+  modelType: "baseline" | "neural" = "baseline"
+): Promise<PredictionData> {
+  const res = await fetch(`${API_BASE}/predictions/${deviceId}?model_type=${modelType}`);
+  if (!res.ok) throw new Error("Failed to fetch predictions");
+  return res.json();
+}
+
+export async function fetchLiveDiagnosis(deviceId: string): Promise<AnomalyDiagnosis> {
+  const res = await fetch(`${API_BASE}/anomalies/diagnose/${deviceId}`);
+  if (!res.ok) throw new Error("Failed to fetch anomaly diagnosis");
+  return res.json();
+}
+
+export async function fetchAlerts(unacknowledgedOnly = false): Promise<AlertItem[]> {
+  const res = await fetch(`${API_BASE}/alerts?unacknowledged_only=${unacknowledgedOnly}`);
+  if (!res.ok) throw new Error("Failed to fetch alerts");
+  return res.json();
+}
+
+export async function acknowledgeAlert(alertId: number): Promise<AlertItem> {
+  const res = await fetch(`${API_BASE}/alerts/${alertId}/ack`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to acknowledge alert");
+  return res.json();
+}
+
+export async function acknowledgeAllAlerts(): Promise<void> {
+  const res = await fetch(`${API_BASE}/alerts/ack-all`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to acknowledge all alerts");
+}
+
+export async function fetchActiveAction(deviceId: string): Promise<RemediationAction | null> {
+  const res = await fetch(`${API_BASE}/actions/active/${deviceId}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function logRemediationAction(
+  deviceId: string,
+  actionType: string,
+  description: string
+): Promise<RemediationAction> {
+  const res = await fetch(`${API_BASE}/actions/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_id: deviceId,
+      action_type: actionType,
+      description,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to log remediation action");
+  return res.json();
+}
+
+export async function resolveRemediationAction(actionId: number): Promise<RemediationAction> {
+  const res = await fetch(`${API_BASE}/actions/${actionId}/resolve`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to resolve action");
+  return res.json();
+}
+
+export async function triggerSimulatorScenario(
+  scenario: string,
+  deviceId: string
+): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/simulator/trigger`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario, device_id: deviceId }),
+  });
+  if (!res.ok) throw new Error("Failed to trigger simulation scenario");
+  return res.json();
+}
