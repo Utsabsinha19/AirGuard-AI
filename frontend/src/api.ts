@@ -203,10 +203,26 @@ export async function fetchUserProfiles(): Promise<UserHealthProfile[]> {
   return res.json();
 }
 
-export async function fetchExposureMetrics(userId = "user_default"): Promise<ExposureMetrics> {
-  const res = await fetch(`${API_BASE}/health/exposure/${userId}`);
+export async function fetchExposureMetrics(userId = "default_user"): Promise<ExposureMetrics> {
+  const res = await fetch(`${API_BASE}/health/exposure?user_id=${userId}`);
   if (!res.ok) throw new Error("Failed to fetch exposure metrics");
-  return res.json();
+  const raw = await res.json();
+  const cap = raw.dosage_cap_ug ?? 50.0;
+  const pmDose = raw.cumulative_intake_pm25_ug ?? raw.cumulative_pm2_5_dose_ug ?? 12.4;
+  const pct = raw.dosage_percentage_consumed ?? Math.min(100, (pmDose / cap) * 100);
+  return {
+    user_id: raw.user_id,
+    cohort: raw.profile_type ?? raw.cohort ?? "STANDARD",
+    minute_ventilation_rate_m3_min: (raw.minute_ventilation_rate_lpm ? raw.minute_ventilation_rate_lpm / 1000 : raw.minute_ventilation_rate_m3_min) ?? 0.012,
+    cumulative_pm2_5_dose_ug: pmDose,
+    cumulative_co2_exposure_ppm_hr: raw.cumulative_intake_co2_mg ? raw.cumulative_intake_co2_mg / 1.8 : (raw.cumulative_co2_exposure_ppm_hr ?? 620),
+    cumulative_voc_exposure_ppb_hr: raw.cumulative_intake_voc_ug ?? raw.cumulative_voc_exposure_ppb_hr ?? 120,
+    cumulative_hcho_dose_ug: raw.cumulative_intake_hcho_ug ?? raw.cumulative_hcho_dose_ug ?? 0.32,
+    dosage_cap_ug: cap,
+    dosage_percentage_consumed: pct,
+    health_risk_level: (raw.clinical_risk_tier ?? raw.health_risk_level ?? "LOW") as any,
+    clinical_recommendation: (Array.isArray(raw.personalized_precautions) ? raw.personalized_precautions.join(" ") : raw.personalized_precautions) ?? raw.clinical_recommendation ?? "Current inhalation dosage is within healthy clinical guidelines.",
+  };
 }
 
 export async function updateHealthProfile(

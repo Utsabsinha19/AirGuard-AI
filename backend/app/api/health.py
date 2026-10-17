@@ -19,6 +19,7 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("/exposure", response_model=ExposureMetricsResponse)
+@router.get("/exposure/{user_id}", response_model=ExposureMetricsResponse)
 async def get_cumulative_exposure(
     user_id: str = "default_user",
     window_hours: float = Query(24.0, ge=1.0, le=168.0),

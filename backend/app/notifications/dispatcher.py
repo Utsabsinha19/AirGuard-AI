@@ -82,7 +82,7 @@ class AlertDispatcher:
 
         # 2. Twilio SMS Dispatch
         if "SMS_TWILIO" in channels:
-            sms_body = f"[AirGuard AI 🚨 {priority}] {title} in {device_id}: {message} Rec: {recommendation}"
+            sms_body = f"[AirGuard AI ALERT {priority}] {title} in {device_id}: {message} Rec: {recommendation}"
             receipt = f"[TWILIO_SMS -> +1-555-AIR-GUARD] Delivered: '{sms_body[:80]}...'"
             results["delivery_receipts"]["SMS"] = receipt
             print(f"[AlertDispatcher] {receipt}")

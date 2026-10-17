@@ -179,7 +179,8 @@ export const ActuationControlPanel: React.FC<ActuationControlPanelProps> = ({
       }}>
         {actuators.map((act) => {
           const isActive = act.state !== "OFF";
-          const isFilterDegraded = act.filter_health_pct < 60;
+          const healthVal = act.filter_health_pct ?? 100;
+          const isFilterDegraded = healthVal < 60;
           return (
             <div
               key={act.actuator_id}
@@ -244,7 +245,7 @@ export const ActuationControlPanel: React.FC<ActuationControlPanelProps> = ({
                     color: isFilterDegraded ? "#f59e0b" : "#10b981",
                     fontWeight: "600"
                   }}>
-                    Filter: {act.filter_health_pct.toFixed(0)}%
+                    Filter: {healthVal.toFixed(0)}%
                   </span>
                 </div>
                 <div style={{
@@ -256,7 +257,7 @@ export const ActuationControlPanel: React.FC<ActuationControlPanelProps> = ({
                 }}>
                   <div style={{
                     height: "100%",
-                    width: `${act.filter_health_pct}%`,
+                    width: `${healthVal}%`,
                     background: isFilterDegraded ? "#f59e0b" : "#10b981",
                   }} />
                 </div>

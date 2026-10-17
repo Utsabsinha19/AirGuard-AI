@@ -24,9 +24,19 @@ export const PersonalHealthExposureCard: React.FC<PersonalHealthExposureCardProp
         fetchUserProfiles(),
       ]);
       setMetrics(m);
-      setProfiles(pList);
+      const list: UserHealthProfile[] = Array.isArray(pList)
+        ? pList
+        : Object.entries(pList || {}).map(([key, val]: [string, any]) => ({
+            user_id: key,
+            name: key,
+            cohort: key as any,
+            current_activity: "LIGHT_OFFICE" as any,
+            target_pm2_5_limit: val.target_pm25_limit || 50,
+            minute_ventilation_rate: val.minute_ventilation_rate || 0.012
+          }));
+      setProfiles(list);
 
-      const found = pList.find((p) => p.user_id === selectedUser);
+      const found = list.find((p) => p.user_id === selectedUser || p.cohort === selectedUser);
       if (found) {
         setActiveCohort(found.cohort);
         setActiveActivity(found.current_activity);
@@ -215,7 +225,7 @@ export const PersonalHealthExposureCard: React.FC<PersonalHealthExposureCardProp
           <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Cumulative PM2.5 Inhaled</span>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "4px 0" }}>
             <span className="mono-num" style={{ fontSize: "22px", fontWeight: "700", color: "#f8fafc" }}>
-              {metrics?.cumulative_pm2_5_dose_ug.toFixed(1) ?? "12.4"}
+              {metrics?.cumulative_pm2_5_dose_ug?.toFixed(1) ?? "12.4"}
             </span>
             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>µg</span>
           </div>
@@ -238,7 +248,7 @@ export const PersonalHealthExposureCard: React.FC<PersonalHealthExposureCardProp
               fontWeight: "700",
               color: (metrics?.dosage_percentage_consumed ?? 24) > 80 ? "#ef4444" : "#38bdf8"
             }}>
-              {metrics?.dosage_percentage_consumed.toFixed(1) ?? "24.8"}%
+              {metrics?.dosage_percentage_consumed?.toFixed(1) ?? "24.8"}%
             </span>
           </div>
           <div style={{
@@ -266,7 +276,7 @@ export const PersonalHealthExposureCard: React.FC<PersonalHealthExposureCardProp
           <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>Minute Ventilation (V_E)</span>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "4px 0" }}>
             <span className="mono-num" style={{ fontSize: "22px", fontWeight: "700", color: "#a855f7" }}>
-              {metrics?.minute_ventilation_rate_m3_min.toFixed(3) ?? "0.012"}
+              {metrics?.minute_ventilation_rate_m3_min?.toFixed(3) ?? "0.012"}
             </span>
             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>m³/min</span>
           </div>
@@ -285,12 +295,12 @@ export const PersonalHealthExposureCard: React.FC<PersonalHealthExposureCardProp
           <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>HCHO Dosage & VOC Exposure</span>
           <div style={{ display: "flex", alignItems: "baseline", gap: "4px", margin: "4px 0" }}>
             <span className="mono-num" style={{ fontSize: "22px", fontWeight: "700", color: "#f43f5e" }}>
-              {metrics?.cumulative_hcho_dose_ug.toFixed(2) ?? "0.32"}
+              {metrics?.cumulative_hcho_dose_ug?.toFixed(2) ?? "0.32"}
             </span>
             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>µg HCHO</span>
           </div>
           <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>
-            CO2: {metrics?.cumulative_co2_exposure_ppm_hr.toFixed(0) ?? "620"} ppm·hr
+            CO2: {metrics?.cumulative_co2_exposure_ppm_hr?.toFixed(0) ?? "620"} ppm·hr
           </span>
         </div>
       </div>

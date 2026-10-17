@@ -144,15 +144,16 @@ export const CrossRoomDiffusionStudio: React.FC<CrossRoomDiffusionStudioProps> =
         marginBottom: "16px"
       }}>
         {data?.nodes.map((node) => {
+          const currPM = node.current_pm2_5 ?? 10.0;
           const projectedVal =
-            horizonView === "15m"
+            (horizonView === "15m"
               ? node.projected_pm2_5_15m
               : horizonView === "30m"
               ? node.projected_pm2_5_30m
-              : node.projected_pm2_5_60m;
+              : node.projected_pm2_5_60m) ?? currPM;
 
-          const delta = projectedVal - node.current_pm2_5;
-          const aqiColor = getAQIColor(node.current_aqi);
+          const delta = projectedVal - currPM;
+          const aqiColor = getAQIColor(node.current_aqi ?? 25);
 
           return (
             <div
@@ -186,7 +187,7 @@ export const CrossRoomDiffusionStudio: React.FC<CrossRoomDiffusionStudioProps> =
                   color: aqiColor,
                   border: `1px solid ${aqiColor}44`
                 }}>
-                  AQI {node.current_aqi}
+                  AQI {node.current_aqi ?? 25}
                 </span>
               </div>
 
@@ -195,7 +196,7 @@ export const CrossRoomDiffusionStudio: React.FC<CrossRoomDiffusionStudioProps> =
                 <div>
                   <span style={{ fontSize: "10px", color: "var(--text-muted)", display: "block" }}>Current PM2.5</span>
                   <span className="mono-num" style={{ fontSize: "18px", fontWeight: "700", color: "#f8fafc" }}>
-                    {node.current_pm2_5.toFixed(1)} <span style={{ fontSize: "10px" }}>µg/m³</span>
+                    {currPM.toFixed(1)} <span style={{ fontSize: "10px" }}>µg/m³</span>
                   </span>
                 </div>
 
@@ -227,13 +228,13 @@ export const CrossRoomDiffusionStudio: React.FC<CrossRoomDiffusionStudioProps> =
                 <span style={{
                   fontWeight: "600",
                   color:
-                    node.risk_direction === "DIFFUSING_OUTWARD"
+                    (node.risk_direction || "EQUILIBRIUM") === "DIFFUSING_OUTWARD"
                       ? "#f97316"
-                      : node.risk_direction === "RECEIVING_INFLOW"
+                      : (node.risk_direction || "EQUILIBRIUM") === "RECEIVING_INFLOW"
                       ? "#eab308"
                       : "#10b981"
                 }}>
-                  {node.risk_direction.replace("_", " ")}
+                  {(node.risk_direction || "EQUILIBRIUM").replace(/_/g, " ")}
                 </span>
               </div>
             </div>
@@ -280,10 +281,10 @@ export const CrossRoomDiffusionStudio: React.FC<CrossRoomDiffusionStudioProps> =
                   background: "rgba(255, 255, 255, 0.06)",
                   color: "var(--text-muted)"
                 }}>
-                  {edge.transport_channel.replace("_", " ")}
+                  {(edge.transport_channel || "DIRECT_DOORWAY").replace(/_/g, " ")}
                 </span>
                 <span style={{ color: "#f59e0b", fontWeight: "700" }}>
-                  {edge.flux_rate_pct.toFixed(0)}% Flux
+                  {(edge.flux_rate_pct ?? 15).toFixed(0)}% Flux
                 </span>
               </div>
             </div>
