@@ -24,8 +24,10 @@ from backend.app.api.simulator import router as simulator_router
 from backend.app.api.actuation import router as actuation_router
 from backend.app.api.health import router as health_router
 from backend.app.api.enterprise import router as enterprise_router
+from backend.app.api.v4_grid import router as v4_grid_router
 from backend.app.ml.predictor_baseline import baseline_predictor
 from backend.app.ml.predictor_neural import neural_predictor
+from backend.app.ml.pinn_engine import pinn_engine
 
 
 @asynccontextmanager
@@ -34,11 +36,12 @@ async def lifespan(app: FastAPI):
     print("[AirGuard AI] Initializing database tables...")
     await init_db()
 
-    print("[AirGuard AI] Verifying ML model artifacts...")
+    print("[AirGuard AI] Verifying ML model artifacts & Physics-Informed Engine...")
     baseline_status = "Ready" if baseline_predictor.is_loaded else "Physical Fallback"
     neural_status = "Ready" if neural_predictor.is_loaded else "Not Loaded"
     print(f"  - Phase A Baseline (Gradient Boosting): {baseline_status}")
     print(f"  - Phase B Neural (PyTorch LSTM): {neural_status}")
+    print("  - Version 4.0 PINN Navier-Stokes 3D Engine: Active")
 
     loop = asyncio.get_running_loop()
     mqtt_subscriber.start(loop)
@@ -52,8 +55,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="3.0.0",
-    description="Autonomous Edge-Intelligent Environmental Health & Closed-Loop Actuation Platform",
+    version="4.0.0",
+    description="Hyper-Connected Swarm-Mesh City-Scale Environmental Intelligence Grid",
     lifespan=lifespan
 )
 
@@ -77,15 +80,18 @@ app.include_router(simulator_router, prefix=settings.API_V1_PREFIX)
 app.include_router(actuation_router, prefix=settings.API_V1_PREFIX)
 app.include_router(health_router, prefix=settings.API_V1_PREFIX)
 app.include_router(enterprise_router, prefix=settings.API_V1_PREFIX)
+app.include_router(v4_grid_router, prefix=settings.API_V1_PREFIX)
 
 
 # ---------------------------------------------------------------------------
-# WebSocket Gateway Endpoints (FR-3.4, NFR-1 & v3.0 Live Streaming)
+# WebSocket Gateway Endpoints (FR-3.4, NFR-1 & v3.0/v4.0 Live Streaming)
 # ---------------------------------------------------------------------------
 
 @app.websocket("/ws/telemetry")
 @app.websocket("/v3/live")
 @app.websocket("/api/v3/live")
+@app.websocket("/v4/live")
+@app.websocket("/api/v4/live")
 async def websocket_telemetry_endpoint(websocket: WebSocket):
     """Real-time live telemetry stream (<1s update interval, wss://api.airguard.ai/v3/live)."""
     await ws_manager.connect_telemetry(websocket)
@@ -116,6 +122,8 @@ async def websocket_alerts_endpoint(websocket: WebSocket):
 @app.websocket("/api/v1/live/{device_id}")
 @app.websocket("/v3/live/{device_id}")
 @app.websocket("/api/v3/live/{device_id}")
+@app.websocket("/v4/live/{device_id}")
+@app.websocket("/api/v4/live/{device_id}")
 async def websocket_device_live_endpoint(websocket: WebSocket, device_id: str):
     """
     Real-time device-specific atmospheric telemetry live stream

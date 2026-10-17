@@ -13,12 +13,23 @@
 #include <Arduino.h>
 
 // ==========================================
-// Device Identity & Room Location
+// Device Identity & Room Location (v4.0 City-Scale Grid)
 // ==========================================
 #define DEVICE_ID           "AG-001"
 #define DEVICE_ROOM         "Master Bedroom"
 #define DEVICE_ZONE         "Bedroom"
-#define FIRMWARE_VERSION    "v3.0.0-PRO"
+#define FIRMWARE_VERSION    "v4.0.0-PRO-GRID"
+#define HARDWARE_ARCH       "ESP32-P4-RISC-V-DUALCORE-NPU"
+
+// ==========================================
+// Swarm Mesh & Multi-Transport Resilience (v4.0 Section 1.2)
+// ==========================================
+#define ESPNOW_MESH_CHANNEL 1
+#define ESPNOW_MESH_PAIRING_KEY "AIRGUARD_SWARM_V4"
+#define TRANSPORT_PRIMARY   "WIFI"
+#define TRANSPORT_FALLBACK1 "ESP_NOW_MESH"
+#define TRANSPORT_FALLBACK2 "CELLULAR_NBIOT"
+#define TRANSPORT_FALLBACK3 "LORAWAN"
 
 // ==========================================
 // Wi-Fi & MQTT Broker Configuration
@@ -31,16 +42,17 @@
 #define MQTT_TOPIC_PUB      "airguard/" DEVICE_ID "/telemetry"
 #define MQTT_TOPIC_PUB_V2   "airguard/v1/devices/" DEVICE_ID "/telemetry"
 #define MQTT_TOPIC_PUB_V3   "airguard/v3/devices/" DEVICE_ID "/telemetry"
+#define MQTT_TOPIC_PUB_V4   "airguard/v4/devices/" DEVICE_ID "/telemetry"
 #define MQTT_TOPIC_SUB      "airguard/" DEVICE_ID "/command"
 
-// Hardware Interrupt Wakeup & Smart Home Relay (v3.0 Section 1.2, 1.3)
+// Hardware Interrupt Wakeup & Smart Home Relay (v4.0 BACnet/Modbus Relay)
 #define PIN_HAZARD_INT      33
 #define RELAY_ACTUATOR_PIN  4
 
 // ==========================================
-// Primary Sensor Pinout Definitions (ESP32)
+// Primary Sensor Pinout Definitions (ESP32-P4 / RISC-V)
 // ==========================================
-// Shared I2C Bus (SHT31 @ 0x44, SGP30 @ 0x58, BMP280 @ 0x76, SSD1306 @ 0x3C)
+// Shared I2C Bus (SHT31 @ 0x44, SGP41 @ 0x59, SCD41 @ 0x62, BMP280 @ 0x76, SSD1306 @ 0x3C)
 #define I2C_SDA_PIN         21
 #define I2C_SCL_PIN         22
 

@@ -37,6 +37,12 @@ import { DeviceCalibrationModal } from "./components/DeviceCalibrationModal";
 import { ActuationControlPanel } from "./components/ActuationControlPanel";
 import { CrossRoomDiffusionStudio } from "./components/CrossRoomDiffusionStudio";
 import { PersonalHealthExposureCard } from "./components/PersonalHealthExposureCard";
+import { AirGuardCopilotModal } from "./components/AirGuardCopilotModal";
+import { PINNFluidDynamicsViewer } from "./components/PINNFluidDynamicsViewer";
+import { SwarmMeshNetworkViewer } from "./components/SwarmMeshNetworkViewer";
+import { GridDemandResponseCard } from "./components/GridDemandResponseCard";
+import { BiometricWearableCard } from "./components/BiometricWearableCard";
+import { BMSIndustrialPanel } from "./components/BMSIndustrialPanel";
 
 export const App: React.FC = () => {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -64,6 +70,14 @@ export const App: React.FC = () => {
   const [showActuation, setShowActuation] = useState(true);
   const [showDiffusion, setShowDiffusion] = useState(true);
   const [showHealth, setShowHealth] = useState(true);
+
+  // v4.0 States
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [showPINN, setShowPINN] = useState(true);
+  const [showSwarmMesh, setShowSwarmMesh] = useState(true);
+  const [showGridDemand, setShowGridDemand] = useState(true);
+  const [showWearable, setShowWearable] = useState(true);
+  const [showBMS, setShowBMS] = useState(true);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -261,6 +275,17 @@ export const App: React.FC = () => {
         showHealth={showHealth}
         onToggleHealth={() => setShowHealth((v) => !v)}
         onFederatedCalibrate={handleFederatedCalibrate}
+        onOpenCopilot={() => setIsCopilotOpen(true)}
+        showPINN={showPINN}
+        onTogglePINN={() => setShowPINN((v) => !v)}
+        showSwarmMesh={showSwarmMesh}
+        onToggleSwarmMesh={() => setShowSwarmMesh((v) => !v)}
+        showGridDemand={showGridDemand}
+        onToggleGridDemand={() => setShowGridDemand((v) => !v)}
+        showWearable={showWearable}
+        onToggleWearable={() => setShowWearable((v) => !v)}
+        showBMS={showBMS}
+        onToggleBMS={() => setShowBMS((v) => !v)}
       />
 
       {/* Main Content Area */}
@@ -352,6 +377,40 @@ export const App: React.FC = () => {
           </div>
         )}
 
+        {/* v4.0 Physics-Informed Neural Network (PINN) 3D Navier-Stokes & Street Canyon (Toggleable) */}
+        {showPINN && (
+          <div style={{ marginBottom: "20px" }}>
+            <PINNFluidDynamicsViewer />
+          </div>
+        )}
+
+        {/* v4.0 ESP-NOW Swarm Mesh Network & Peer Consensus (Toggleable) */}
+        {showSwarmMesh && (
+          <div style={{ marginBottom: "20px" }}>
+            <SwarmMeshNetworkViewer />
+          </div>
+        )}
+
+        {/* v4.0 Industrial BMS Actuation & Dynamic Grid Demand Response */}
+        {(showBMS || showGridDemand) && (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+            gap: "20px",
+            marginBottom: "20px"
+          }}>
+            {showBMS && <BMSIndustrialPanel />}
+            {showGridDemand && <GridDemandResponseCard />}
+          </div>
+        )}
+
+        {/* v4.0 Wearable Biometric Inhalation Fusion (Toggleable) */}
+        {showWearable && (
+          <div style={{ marginBottom: "20px" }}>
+            <BiometricWearableCard />
+          </div>
+        )}
+
         {/* Multi-Room Spatial Zone Heatmap Grid */}
         <div style={{ marginBottom: "20px" }}>
           <MultiRoomHeatmap
@@ -365,6 +424,14 @@ export const App: React.FC = () => {
       </main>
 
       {/* Modals & Drawers */}
+      <AirGuardCopilotModal
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        selectedDeviceId={selectedDeviceId}
+        selectedRoom={selectedDevice?.room ?? "Selected Room"}
+        latestTelemetry={currentTelemetry || undefined}
+      />
+
       <AlertCenter
         alerts={alerts}
         isOpen={isAlertCenterOpen}

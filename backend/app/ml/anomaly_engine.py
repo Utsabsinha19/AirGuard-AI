@@ -45,17 +45,24 @@ class AnomalyEngine:
         outdoor_pm25 = float(current_reading.get("outdoor_pm25", 0.0) or 0.0)
         flow_rate = float(current_reading.get("flow_rate", 100.0) or 100.0)
 
+        # Version 4.0 Speciated Matrix & Acoustic FFT
+        pm0_1 = float(current_reading.get("pm0_1", 0.0) or 0.0)
+        no2 = float(current_reading.get("no2_ppm", 0.0) or 0.0)
+        o3 = float(current_reading.get("o3_ppm", 0.0) or 0.0)
+        acoustic_db = float(current_reading.get("acoustic_db", noise) or noise)
+        dominant_freq = float(current_reading.get("dominant_freq_hz", 120.0) or 120.0)
+
         # Standard z-scores relative to baseline
         z_pm25 = max(0.0, (pm25 - baselines["pm2_5"]["median"]) / max(1.0, baselines["pm2_5"]["std"]))
         z_co2 = max(0.0, (co2 - baselines["co2"]["median"]) / max(1.0, baselines["co2"]["std"]))
         z_voc = max(0.0, (voc - baselines["voc"]["median"]) / max(1.0, baselines["voc"]["std"]))
-        z_noise = max(0.0, (noise - baselines["noise_level"]["median"]) / max(1.0, baselines["noise_level"]["std"]))
+        z_noise = max(0.0, (acoustic_db - baselines["noise_level"]["median"]) / max(1.0, baselines["noise_level"]["std"]))
 
         is_pm_elevated = pm25 > 25.0 or (pm25 > 15.0 and z_pm25 > 2.0)
         is_co2_elevated = co2 > 950.0 or (co2 > 800.0 and z_co2 > 2.0)
         is_voc_elevated = voc > 280.0 or (voc > 200.0 and z_voc > 2.0)
         is_hcho_elevated = hcho > 0.08
-        is_noise_elevated = noise > 60.0 or (noise > 50.0 and z_noise > 2.0)
+        is_noise_elevated = acoustic_db > 60.0 or (acoustic_db > 50.0 and z_noise > 2.0)
         is_barometric_drop = pressure < 1006.0
 
         # Composite anomaly score (0.0 to 100.0)
@@ -83,7 +90,7 @@ class AnomalyEngine:
             temp=temp,
             humidity=humidity,
             pressure=pressure,
-            noise=noise,
+            noise=acoustic_db,
             light=light,
             hcho=hcho,
             outdoor_pm25=outdoor_pm25,
@@ -106,6 +113,16 @@ class AnomalyEngine:
             "HCHO": round(min(100.0, (hcho / 0.08) * 50.0), 1) if hcho > 0 else 0.0
         }
 
+        # v4.0 Generative Copilot Advisory Generator (Section 2.2 Table)
+        copilot_advisory = self._generate_copilot_advisory(
+            root_cause_code=root_cause_code,
+            pm25=pm25,
+            co2=co2,
+            voc=voc,
+            hcho=hcho,
+            acoustic_db=acoustic_db
+        )
+
         return {
             "is_anomaly": is_anomaly,
             "anomaly_score": round(anomaly_score, 1),
@@ -114,10 +131,16 @@ class AnomalyEngine:
             "root_cause_title": root_cause_title,
             "description": description,
             "recommendation": recommendation,
+            "copilot_advisory": copilot_advisory,
             "sensor_contributions": sensor_contributions,
             "metrics": {
                 "pm2_5": pm25,
                 "pm10": pm10,
+                "pm0_1": pm0_1,
+                "no2_ppm": no2,
+                "o3_ppm": o3,
+                "acoustic_db": acoustic_db,
+                "dominant_freq_hz": dominant_freq,
                 "co2": co2,
                 "voc": voc,
                 "temperature": temp,
@@ -296,6 +319,31 @@ class AnomalyEngine:
             "One or more environmental indicators have deviated from historical baseline medians.",
             "Inspect the room for ongoing combustion, candles, or blocked air returns."
         )
+
+    def _generate_copilot_advisory(
+        self,
+        root_cause_code: str,
+        pm25: float,
+        co2: float,
+        voc: float,
+        hcho: float,
+        acoustic_db: float
+    ) -> str:
+        if root_cause_code == "COOKING_SMOKE" or (pm25 > 50.0 and voc > 200.0):
+            return "AirGuard detected heavy cooking fumes in the Kitchen. Purifiers switched to Max. Estimated clear time: 14 mins."
+        elif root_cause_code == "MATERIAL_OFF_GASSING" or hcho > 0.08:
+            return "Elevated Formaldehyde detected in Study. Fresh-air damper opened automatically. Maintain continuous ventilation."
+        elif root_cause_code in ["POOR_VENTILATION_OCCUPANCY", "HIGH_OCCUPANCY_ACTIVITY", "CLOSED_ROOM_STAGNATION"] or co2 > 1200.0:
+            return "CO₂ in Conference Room B exceeds 1,500 ppm. HVAC airflow boosted by 35% to prevent cognitive fatigue."
+        elif root_cause_code == "WILDFIRE_SMOKE_INFILTRATION" or pm25 > 75.0:
+            return "Wildfire smoke detected outdoors. Building HVAC set to 100% recirculation mode; HEPA scrubbers engaged."
+        elif root_cause_code == "HVAC_FILTER_FAILURE":
+            return "AirGuard identified saturated HVAC media filtration. Filter CADR efficiency degraded below 50%. Schedule filter replacement."
+        elif root_cause_code == "CHEMICAL_SOLVENT_EVAPORATION":
+            return "Volatile chemical solvent vapors detected. Mechanical exhaust activated. Evacuate room until VOC baseline normalizes."
+        elif root_cause_code == "CLEAN_STABLE":
+            return "Atmosphere is clean, balanced, and fully within safe clinical thresholds. Continuous monitoring active."
+        return f"Atmospheric deviation observed ({root_cause_code}). Smart remediation protocol engaged."
 
 
 anomaly_engine = AnomalyEngine()

@@ -17,16 +17,21 @@
 #include <Arduino.h>
 
 struct SensorReadings {
+    float pm0_1;            // Ultra-fine particulate count (<0.1 µm)
     float pm0_3;
     float pm1_0;
     float pm2_5;
     float pm10;
-    int   co2_ppm;
+    int   co2_ppm;          // Dual-beam NDIR SCD41
     int   voc_ppb;
     float hcho_ppm;         // Electrochemical Formaldehyde in ppm (ZE08)
+    float no2_ppm;          // Nitrogen Dioxide (SGP41/PID)
+    float o3_ppm;           // Ground-level Ozone
     float voc_index;        // Sensirion VOC Index
     float nox_index;        // Sensirion NOx Index
     float gas_resistance;   // BME688 in Ohms
+    float acoustic_db;      // Acoustic FFT Sound Pressure Level (dB)
+    float dominant_freq_hz; // Acoustic FFT Dominant Frequency (Hz)
     float temperature_c;
     float humidity_rh;
     

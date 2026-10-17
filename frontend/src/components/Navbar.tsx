@@ -1,6 +1,6 @@
 import React from "react";
 import type { Device, AlertItem } from "../types";
-import { Bell, Cpu, Radio, Sparkles, Sliders, Download, Map, Zap, Network, HeartPulse, RefreshCw } from "lucide-react";
+import { Bell, Cpu, Radio, Sparkles, Sliders, Download, Map, Zap, Network, HeartPulse, RefreshCw, Wind, Share2, Building2, Watch } from "lucide-react";
 import { getExportCSVUrl } from "../api";
 
 interface NavbarProps {
@@ -25,6 +25,18 @@ interface NavbarProps {
   showHealth: boolean;
   onToggleHealth: () => void;
   onFederatedCalibrate: () => void;
+  // v4.0 additions
+  onOpenCopilot: () => void;
+  showPINN: boolean;
+  onTogglePINN: () => void;
+  showSwarmMesh: boolean;
+  onToggleSwarmMesh: () => void;
+  showGridDemand: boolean;
+  onToggleGridDemand: () => void;
+  showWearable: boolean;
+  onToggleWearable: () => void;
+  showBMS: boolean;
+  onToggleBMS: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -49,6 +61,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   showHealth,
   onToggleHealth,
   onFederatedCalibrate,
+  onOpenCopilot,
+  showPINN,
+  onTogglePINN,
+  showSwarmMesh,
+  onToggleSwarmMesh,
+  showGridDemand,
+  onToggleGridDemand,
+  showWearable,
+  onToggleWearable,
+  showBMS,
+  onToggleBMS,
 }) => {
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
@@ -77,11 +100,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 AirGuard AI
               </h1>
               <span className="glass-pill" style={{ fontSize: "11px", fontWeight: "600", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
-                v3.0.0 Pro Enterprise
+                v4.0.0 Pro Grid
               </span>
             </div>
             <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-              Autonomous Matter Actuation, TinyML Edge & ST-GNN Spatial Intelligence
+              City-Scale Swarm Mesh, PINN Fluid Dynamics, Industrial BMS & AI Copilot
             </p>
           </div>
 
@@ -159,8 +182,31 @@ export const Navbar: React.FC<NavbarProps> = ({
               <option value="lstm" style={{ background: "#0f172a" }}>Phase B: PyTorch LSTM</option>
               <option value="gru" style={{ background: "#0f172a" }}>Phase B: PyTorch GRU</option>
               <option value="tcn" style={{ background: "#0f172a" }}>Phase B: Temporal CNN</option>
+              <option value="pinn" style={{ background: "#0f172a" }}>Phase C: PINN 3D Fluid</option>
             </select>
           </div>
+
+          {/* v4.0 AI Copilot Launcher */}
+          <button
+            onClick={onOpenCopilot}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 13px",
+              background: "linear-gradient(135deg, rgba(147, 51, 234, 0.25) 0%, rgba(236, 72, 153, 0.25) 100%)",
+              borderColor: "rgba(236, 72, 153, 0.5)",
+              color: "#f472b6",
+              fontWeight: 700,
+              boxShadow: "0 0 14px rgba(236, 72, 153, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+            title="Launch AirGuard Domain SLM Copilot (Instant Plain-Language Advisories)"
+          >
+            <Sparkles size={15} color="#f472b6" />
+            <span>AI Copilot</span>
+          </button>
 
           {/* Floorplan View Toggle */}
           <button
@@ -176,6 +222,86 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Map size={15} color="#38bdf8" />
             <span>Floorplan</span>
+          </button>
+
+          {/* v4.0 PINN 3D Fluid Dynamics Toggle */}
+          <button
+            onClick={onTogglePINN}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showPINN ? "rgba(6, 182, 212, 0.2)" : undefined,
+              borderColor: showPINN ? "#06b6d4" : undefined
+            }}
+            title="Toggle PINN 3D Navier-Stokes & Urban Street Canyon Dispersion"
+          >
+            <Wind size={15} color="#06b6d4" />
+            <span>PINN 3D</span>
+          </button>
+
+          {/* v4.0 Swarm Mesh Network Toggle */}
+          <button
+            onClick={onToggleSwarmMesh}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showSwarmMesh ? "rgba(16, 185, 129, 0.2)" : undefined,
+              borderColor: showSwarmMesh ? "#10b981" : undefined
+            }}
+            title="Toggle ESP-NOW Swarm Mesh Network & Peer Consensus"
+          >
+            <Share2 size={15} color="#10b981" />
+            <span>Swarm Mesh</span>
+          </button>
+
+          {/* v4.0 Industrial BMS Toggle */}
+          <button
+            onClick={onToggleBMS}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showBMS ? "rgba(234, 179, 8, 0.2)" : undefined,
+              borderColor: showBMS ? "#eab308" : undefined
+            }}
+            title="Toggle Industrial BMS Actuators (BACnet/Modbus/KNX)"
+          >
+            <Building2 size={15} color="#eab308" />
+            <span>BMS</span>
+          </button>
+
+          {/* v4.0 Grid Demand Response Toggle */}
+          <button
+            onClick={onToggleGridDemand}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showGridDemand ? "rgba(245, 158, 11, 0.2)" : undefined,
+              borderColor: showGridDemand ? "#f59e0b" : undefined
+            }}
+            title="Toggle Dynamic Tariffs & Pre-emptive Scrubbing"
+          >
+            <Zap size={15} color="#f59e0b" />
+            <span>Grid Demand</span>
+          </button>
+
+          {/* v4.0 Wearable Biometrics Toggle */}
+          <button
+            onClick={onToggleWearable}
+            className="btn-secondary"
+            style={{
+              fontSize: "12px",
+              padding: "7px 12px",
+              background: showWearable ? "rgba(236, 72, 153, 0.2)" : undefined,
+              borderColor: showWearable ? "#ec4899" : undefined
+            }}
+            title="Toggle Wearable Biometric Fusion (HealthKit, Garmin, WHOOP)"
+          >
+            <Watch size={15} color="#ec4899" />
+            <span>Wearables</span>
           </button>
 
           {/* v3.0 Smart Actuation Hub Toggle */}

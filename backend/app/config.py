@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AirGuard AI"
-    VERSION: str = "1.0.0"
+    VERSION: str = "4.0.0"
     API_V1_PREFIX: str = "/api"
     
     # Database Settings

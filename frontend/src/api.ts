@@ -11,6 +11,18 @@ import type {
   UserHealthProfile,
   ExposureMetrics,
   CrossRoomDiffusionResponse,
+  CopilotResponse,
+  CopilotIncidentAdvisory,
+  PINNSimulationResult,
+  StreetCanyonResult,
+  BMSDevice,
+  GridOptimizationStatus,
+  MeshTopologyResponse,
+  PeerConsensusReport,
+  DynamicIntakeResponse,
+  IncidentMemorySearchResponse,
+  CertificateVerifyResponse,
+  PrivacyAnonymizeResponse,
 } from "./types";
 
 const API_BASE = "http://127.0.0.1:8000/api";
@@ -225,5 +237,189 @@ export async function federatedCalibrateDevice(
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to perform federated calibration");
+  return res.json();
+}
+
+// ==========================================
+// Version 4.0 API Client Functions
+// ==========================================
+
+export async function queryCopilotAgent(
+  query: string,
+  deviceId = "AG-001",
+  userId = "default_user"
+): Promise<CopilotResponse> {
+  const res = await fetch(`${API_BASE}/copilot/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, device_id: deviceId, user_id: userId }),
+  });
+  if (!res.ok) throw new Error("Failed to query Copilot Agent");
+  return res.json();
+}
+
+export async function fetchCopilotAdvisory(
+  deviceId: string,
+  incidentCode = "CLEAN_STABLE",
+  room = "Living Room"
+): Promise<CopilotIncidentAdvisory> {
+  const res = await fetch(
+    `${API_BASE}/copilot/advisories/${deviceId}?incident_code=${incidentCode}&room=${encodeURIComponent(room)}`
+  );
+  if (!res.ok) throw new Error("Failed to fetch Copilot Advisory");
+  return res.json();
+}
+
+export async function runPINN3DSimulation(params?: {
+  room_or_canyon_id?: string;
+  inlet_velocity_mps?: number;
+  vent_exhaust_rate_cfm?: number;
+  emission_source_ug_s?: number;
+  resolution_x?: number;
+  resolution_y?: number;
+  resolution_z?: number;
+}): Promise<PINNSimulationResult> {
+  const res = await fetch(`${API_BASE}/pinn/simulate-3d`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params || {}),
+  });
+  if (!res.ok) throw new Error("Failed to run PINN 3D simulation");
+  return res.json();
+}
+
+export async function runPINNStreetCanyon(params?: {
+  canyon_id?: string;
+  building_height_m?: number;
+  street_width_m?: number;
+  ambient_wind_mps?: number;
+  wind_direction_deg?: number;
+  traffic_emissions_ug_m_s?: number;
+}): Promise<StreetCanyonResult> {
+  const res = await fetch(`${API_BASE}/pinn/street-canyon`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params || {}),
+  });
+  if (!res.ok) throw new Error("Failed to run PINN Street Canyon simulation");
+  return res.json();
+}
+
+export async function fetchBMSDevices(): Promise<BMSDevice[]> {
+  const res = await fetch(`${API_BASE}/bms/devices`);
+  if (!res.ok) throw new Error("Failed to fetch BMS devices");
+  return res.json();
+}
+
+export async function controlBMSDevice(
+  deviceId: string,
+  targetSpeedPct?: number,
+  damperPct?: number,
+  mode = "AUTO"
+): Promise<BMSDevice> {
+  const res = await fetch(`${API_BASE}/bms/control`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_id: deviceId,
+      target_speed_pct: targetSpeedPct,
+      damper_pct: damperPct,
+      operating_mode: mode,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to control BMS device");
+  return res.json();
+}
+
+export async function fetchGridTariffs(): Promise<{
+  current_tariff: { hour: number; tier: string; rate_cents_per_kwh: number; is_solar_surplus: boolean };
+  tariffs_24h: Record<number, { tier: string; rate: number }>;
+}> {
+  const res = await fetch(`${API_BASE}/grid/tariffs`);
+  if (!res.ok) throw new Error("Failed to fetch grid tariffs");
+  return res.json();
+}
+
+export async function evaluateGridDemandResponse(
+  spikeMins = 20,
+  forecastedPm25 = 65.0
+): Promise<GridOptimizationStatus> {
+  const res = await fetch(
+    `${API_BASE}/grid/evaluate-response?predicted_pm25_spike_mins=${spikeMins}&forecasted_pm25=${forecastedPm25}`,
+    { method: "POST" }
+  );
+  if (!res.ok) throw new Error("Failed to evaluate grid demand response");
+  return res.json();
+}
+
+export async function fetchMeshTopology(): Promise<MeshTopologyResponse> {
+  const res = await fetch(`${API_BASE}/mesh/topology`);
+  if (!res.ok) throw new Error("Failed to fetch mesh topology");
+  return res.json();
+}
+
+export async function triggerPeerConsensus(): Promise<PeerConsensusReport> {
+  const res = await fetch(`${API_BASE}/mesh/peer-consensus`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to trigger peer consensus");
+  return res.json();
+}
+
+export async function syncWearable(payload: {
+  user_id: string;
+  source: string;
+  heart_rate_bpm: number;
+  hrv_ms: number;
+  spo2_pct: number;
+  respiratory_rate_bpm: number;
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/wearables/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Failed to sync wearable");
+  return res.json();
+}
+
+export async function fetchDynamicInhalationIntake(userId = "default_user"): Promise<DynamicIntakeResponse> {
+  const res = await fetch(`${API_BASE}/wearables/${userId}/dynamic-intake`);
+  if (!res.ok) throw new Error("Failed to fetch dynamic inhalation intake");
+  return res.json();
+}
+
+export async function searchIncidentVectorMemory(sig: {
+  pm2_5: number;
+  co2: number;
+  voc: number;
+  hcho?: number;
+  acoustic_db?: number;
+  top_k?: number;
+}): Promise<IncidentMemorySearchResponse> {
+  const res = await fetch(`${API_BASE}/vector-memory/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sig),
+  });
+  if (!res.ok) throw new Error("Failed to search vector memory");
+  return res.json();
+}
+
+export async function verifyDeviceHardwareCert(deviceId: string): Promise<CertificateVerifyResponse> {
+  const res = await fetch(`${API_BASE}/security/device-cert/${deviceId}`);
+  if (!res.ok) throw new Error("Failed to verify device cert");
+  return res.json();
+}
+
+export async function applyDifferentialPrivacy(
+  datasetId: string,
+  records: any[],
+  epsilon = 0.5
+): Promise<PrivacyAnonymizeResponse> {
+  const res = await fetch(`${API_BASE}/security/differential-privacy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataset_id: datasetId, records, epsilon }),
+  });
+  if (!res.ok) throw new Error("Failed to apply differential privacy");
   return res.json();
 }

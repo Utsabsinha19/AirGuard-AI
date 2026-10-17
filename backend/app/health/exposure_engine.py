@@ -166,5 +166,54 @@ class HealthExposureEngine:
             "personalized_precautions": precautions
         }
 
+    async def calculate_dynamic_intake(
+        self,
+        user_id: str,
+        heart_rate_bpm: float,
+        hrv_ms: float = 55.0,
+        spo2_pct: float = 98.0,
+        respiratory_rate_bpm: float = 15.0,
+        session: Optional[AsyncSession] = None
+    ) -> Dict[str, Any]:
+        """
+        Version 4.0 Personal Inhalation Intake & Clinical Exposure Modeling
+        I_pollutant = sum_i( C_i * V_E(HeartRate) * Delta_t_i )
+        Where V_E is dynamically scaled by real-time heart rate and physical activity levels.
+        """
+        if session:
+            profile = await self.get_or_create_profile(user_id, session)
+            base_ve = profile.minute_ventilation_rate
+        else:
+            base_ve = 12.0
+
+        resting_hr = 65.0
+        # Continuous minute ventilation scaling
+        hr_ratio = max(0.0, (heart_rate_bpm - resting_hr) / resting_hr)
+        dynamic_ve = base_ve * (1.0 + 1.25 * hr_ratio)
+
+        # Baseline exposure benchmark over 1 hour at standard 15 ug/m3 PM2.5
+        ambient_pm25 = 15.0
+        base_intake = (ambient_pm25 * (base_ve / 1000.0) * 60.0)
+        dynamic_intake = (ambient_pm25 * (dynamic_ve / 1000.0) * 60.0)
+        excess_pct = round(max(0.0, ((dynamic_intake - base_intake) / max(0.1, base_intake)) * 100.0), 1)
+
+        strain = "NORMAL"
+        if heart_rate_bpm > 130.0 or spo2_pct < 93.0:
+            strain = "BRONCHIAL_WARNING"
+        elif heart_rate_bpm > 105.0:
+            strain = "HIGH_STRAIN"
+        elif heart_rate_bpm > 85.0:
+            strain = "MILD_STRAIN"
+
+        return {
+            "user_id": user_id,
+            "current_heart_rate": heart_rate_bpm,
+            "baseline_resting_hr": resting_hr,
+            "dynamic_ve_lpm": round(dynamic_ve, 2),
+            "cumulative_intake_pm25_ug": round(dynamic_intake, 1),
+            "excess_intake_due_to_hr_pct": excess_pct,
+            "physiological_strain_index": strain
+        }
+
 
 exposure_engine = HealthExposureEngine()

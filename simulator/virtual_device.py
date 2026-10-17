@@ -128,23 +128,52 @@ class VirtualEdgeNode:
     def sample_telemetry(self) -> Dict[str, Any]:
         self.step_physics()
         
-        # v3.0 Next-gen metrics
+        # v3.0 & v4.0 Next-gen metrics
         sim_hcho = round(0.015 + (self.voc / 2500.0) if self.active_event != "material_off_gassing" else 0.115, 3)
         sim_voc_index = round(min(500.0, max(1.0, self.voc * 1.1)), 1)
         sim_nox_index = round(min(500.0, max(1.0, 1.2 + (self.pm2_5 * 0.05))), 1)
         sim_gas_res = round(max(5000.0, 65000.0 - (self.voc * 80.0)), 0)
+        sim_pm01 = round(self.pm2_5 * 0.12, 2)
         sim_pm03 = round(self.pm2_5 * 0.28, 2)
         sim_pm10 = round(self.pm2_5 * 0.68, 2)
+        sim_no2 = round(0.012 + (self.pm2_5 / 3000.0), 3)
+        sim_o3 = round(0.010 + (self.ambient_light / 15000.0), 3)
+
+        # Acoustic FFT Simulation (culinary sizzling vs ambient)
+        if self.active_event == "cooking":
+            sim_acoustic_db = round(64.0 + np.random.normal(0, 3.5), 1)
+            sim_dominant_freq = round(1450.0 + np.random.normal(0, 80.0), 1) # Sizzle FFT
+        elif self.active_event == "high_occupancy":
+            sim_acoustic_db = round(72.0 + np.random.normal(0, 4.0), 1)
+            sim_dominant_freq = round(320.0 + np.random.normal(0, 40.0), 1)  # Speech vocal harmonics
+        else:
+            sim_acoustic_db = round(self.noise_level, 1)
+            sim_dominant_freq = round(120.0 + np.random.normal(0, 10.0), 1)
+
+        # Biometric Wearable Fusion Simulation
+        sim_hr = round(72.0 + (12.0 if self.active_event == "high_occupancy" else 0.0) + np.random.normal(0, 2.0), 1)
+        sim_hrv = round(62.0 - (10.0 if self.active_event == "high_occupancy" else 0.0) + np.random.normal(0, 3.0), 1)
+        sim_spo2 = round(98.5 - (1.2 if self.pm2_5 > 65.0 else 0.0), 1)
+        sim_rr = round(15.0 + (3.0 if self.active_event == "high_occupancy" else 0.0), 1)
 
         metrics = {
             "pm2_5": round(self.pm2_5, 1),
             "pm10": round(self.pm10, 1),
+            "pm0_1": sim_pm01,
             "pm0_3": sim_pm03,
             "pm1_0": sim_pm10,
             "hcho": sim_hcho,
+            "no2_ppm": sim_no2,
+            "o3_ppm": sim_o3,
             "voc_index": sim_voc_index,
             "nox_index": sim_nox_index,
             "gas_resistance": sim_gas_res,
+            "acoustic_db": sim_acoustic_db,
+            "dominant_freq_hz": sim_dominant_freq,
+            "heart_rate_bpm": sim_hr,
+            "hrv_ms": sim_hrv,
+            "spo2_pct": sim_spo2,
+            "respiratory_rate_bpm": sim_rr,
             "co2": round(self.co2, 0),
             "voc": round(self.voc, 1),
             "temperature": round(self.temperature, 1),
@@ -161,12 +190,23 @@ class VirtualEdgeNode:
             "metrics": metrics,
             "pm2_5": round(self.pm2_5, 1),
             "pm10": round(self.pm10, 1),
+            "pm0_1": sim_pm01,
             "pm0_3": sim_pm03,
             "pm1_0": sim_pm10,
             "hcho": sim_hcho,
+            "no2_ppm": sim_no2,
+            "o3_ppm": sim_o3,
             "voc_index": sim_voc_index,
             "nox_index": sim_nox_index,
             "gas_resistance": sim_gas_res,
+            "acoustic_db": sim_acoustic_db,
+            "dominant_freq_hz": sim_dominant_freq,
+            "heart_rate_bpm": sim_hr,
+            "hrv_ms": sim_hrv,
+            "spo2_pct": sim_spo2,
+            "respiratory_rate_bpm": sim_rr,
+            "mesh_node_id": f"MESH-{self.device_id}",
+            "transport_channel": "ESP_NOW_MESH",
             "co2": round(self.co2, 0),
             "voc": round(self.voc, 1),
             "temperature": round(self.temperature, 1),

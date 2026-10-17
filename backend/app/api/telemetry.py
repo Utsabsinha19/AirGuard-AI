@@ -101,12 +101,23 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
         timestamp=ts,
         pm2_5=payload.pm2_5,
         pm10=payload.pm10 or (payload.pm2_5 * 1.4),
+        pm0_1=payload.pm0_1 or round(payload.pm2_5 * 0.12, 2),
         pm0_3=payload.pm0_3 or round(payload.pm2_5 * 0.25, 2),
         pm1_0=payload.pm1_0 or round(payload.pm2_5 * 0.65, 2),
         hcho=payload.hcho or 0.02,
+        no2_ppm=payload.no2_ppm or 0.015,
+        o3_ppm=payload.o3_ppm or 0.012,
         voc_index=payload.voc_index or 100.0,
         nox_index=payload.nox_index or 1.0,
         gas_resistance=payload.gas_resistance or 52000.0,
+        acoustic_db=payload.acoustic_db or payload.noise_level or 42.0,
+        dominant_freq_hz=payload.dominant_freq_hz or 120.0,
+        heart_rate_bpm=payload.heart_rate_bpm or 72.0,
+        hrv_ms=payload.hrv_ms or 60.0,
+        spo2_pct=payload.spo2_pct or 98.0,
+        respiratory_rate_bpm=payload.respiratory_rate_bpm or 15.0,
+        mesh_node_id=payload.mesh_node_id,
+        transport_channel=payload.transport_channel or "WIFI",
         co2=payload.co2,
         voc=payload.voc,
         temperature=payload.temperature,
@@ -123,18 +134,23 @@ async def ingest_telemetry(payload: TelemetryPayload, db: AsyncSession = Depends
     )
     db.add(telemetry_record)
 
-    # 5. Context-aware Anomaly Detection
+    # 5. Context-aware Anomaly Detection (v4.0 Speciated & Acoustic Correlation)
     current_metrics = {
         "pm2_5": cal_pm25,
         "pm10": payload.pm10,
+        "pm0_1": telemetry_record.pm0_1,
         "co2": payload.co2,
         "voc": cal_voc,
         "hcho": telemetry_record.hcho,
+        "no2_ppm": telemetry_record.no2_ppm,
+        "o3_ppm": telemetry_record.o3_ppm,
         "temperature": payload.temperature,
         "humidity": payload.humidity,
         "pressure": payload.pressure,
         "ambient_light": payload.ambient_light,
-        "noise_level": payload.noise_level
+        "noise_level": payload.noise_level,
+        "acoustic_db": telemetry_record.acoustic_db,
+        "dominant_freq_hz": telemetry_record.dominant_freq_hz
     }
     diag = anomaly_engine.detect_anomalies_and_diagnose(current_metrics)
 

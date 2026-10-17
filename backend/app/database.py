@@ -99,6 +99,19 @@ class Telemetry(Base):
     voc_index = Column(Float, default=100.0)          # Sensirion VOC Index 0-500
     nox_index = Column(Float, default=1.0)            # Sensirion NOx Index 0-500
     gas_resistance = Column(Float, default=50000.0)   # BME688 Gas Resistance in Ohms
+
+    # Version 4.0 Speciated Matrix, Swarm Mesh & Wearable Biometric Fusion
+    pm0_1 = Column(Float, default=0.0)
+    no2_ppm = Column(Float, default=0.0)
+    o3_ppm = Column(Float, default=0.0)
+    acoustic_db = Column(Float, default=40.0)
+    dominant_freq_hz = Column(Float, default=120.0)
+    heart_rate_bpm = Column(Float, default=72.0)
+    hrv_ms = Column(Float, default=60.0)
+    spo2_pct = Column(Float, default=98.0)
+    respiratory_rate_bpm = Column(Float, default=15.0)
+    mesh_node_id = Column(String(64), nullable=True)
+    transport_channel = Column(String(32), default="WIFI")
     
     # Non-linear Calibrated Metrics
     calibrated_pm2_5 = Column(Float, nullable=False)
@@ -251,6 +264,88 @@ class UserHealthProfile(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+# ---------------------------------------------------------------------------
+# Version 4.0 Industrial BMS & Dynamic Grid Demand Response Models
+# ---------------------------------------------------------------------------
+
+class BMSDeviceRecord(Base):
+    __tablename__ = "bms_devices"
+
+    id = Column(String(64), primary_key=True)            # e.g., "BACNET-CHILLER-01", "MODBUS-AHU-02"
+    name = Column(String(128), nullable=False)
+    protocol = Column(String(32), default="BACNET_IP")   # "BACNET_IP", "MODBUS_TCP", "KNX", "SPARKPLUG_B", "MATTER"
+    point_name = Column(String(64), nullable=False)      # e.g., "SUPPLY_AIR_VAV_DAMPER"
+    current_state = Column(String(32), default="AUTO")
+    speed_pct = Column(Integer, default=50)
+    damper_pct = Column(Integer, default=50)
+    power_draw_kw = Column(Float, default=2.4)
+    is_online = Column(Boolean, default=True)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+
+class GridTariffRecord(Base):
+    __tablename__ = "grid_tariffs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hour = Column(Integer, nullable=False, unique=True)  # 0 to 23
+    tier = Column(String(32), nullable=False)            # "OFF_PEAK", "SHOULDER", "PEAK", "SOLAR_SURPLUS"
+    tariff_rate_cents_per_kwh = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class IncidentMemoryRecord(Base):
+    __tablename__ = "incident_memories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    incident_id = Column(String(64), unique=True, nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    incident_type = Column(String(64), nullable=False, index=True)
+    embedding_vector = Column(JSON, nullable=False)      # Normalized multi-sensor embedding vector
+    sensor_signature = Column(JSON, nullable=False)      # Dict of raw sensor metrics at incident peak
+    resolution_strategy = Column(Text, nullable=False)
+    time_to_recover_mins = Column(Float, default=15.0)
+
+
+class WearableBiometricRecord(Base):
+    __tablename__ = "wearable_biometrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(64), ForeignKey("user_health_profiles.user_id"), nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    source = Column(String(32), default="APPLE_HEALTHKIT") # "APPLE_HEALTHKIT", "GARMIN", "WHOOP"
+    heart_rate_bpm = Column(Float, nullable=False)
+    hrv_ms = Column(Float, default=55.0)
+    spo2_pct = Column(Float, default=98.0)
+    respiratory_rate_bpm = Column(Float, default=15.0)
+    dynamic_ve_lpm = Column(Float, default=12.0)
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        def migrate_sqlite(connection):
+            try:
+                cursor = connection.connection.cursor()
+                cursor.execute("PRAGMA table_info(telemetry)")
+                columns = [col[1] for col in cursor.fetchall()]
+                new_columns = [
+                    ("pm0_1", "FLOAT DEFAULT 0.0"),
+                    ("no2_ppm", "FLOAT DEFAULT 0.0"),
+                    ("o3_ppm", "FLOAT DEFAULT 0.0"),
+                    ("acoustic_db", "FLOAT DEFAULT 40.0"),
+                    ("dominant_freq_hz", "FLOAT DEFAULT 120.0"),
+                    ("heart_rate_bpm", "FLOAT DEFAULT 72.0"),
+                    ("hrv_ms", "FLOAT DEFAULT 60.0"),
+                    ("spo2_pct", "FLOAT DEFAULT 98.0"),
+                    ("respiratory_rate_bpm", "FLOAT DEFAULT 15.0"),
+                    ("mesh_node_id", "VARCHAR(64)"),
+                    ("transport_channel", "VARCHAR(32) DEFAULT 'WIFI'")
+                ]
+                for col_name, col_type in new_columns:
+                    if col_name not in columns:
+                        cursor.execute(f"ALTER TABLE telemetry ADD COLUMN {col_name} {col_type}")
+            except Exception as e:
+                pass
+
+        await conn.run_sync(migrate_sqlite)

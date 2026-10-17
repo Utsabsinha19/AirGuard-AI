@@ -2,6 +2,7 @@ export interface Telemetry {
   id?: number;
   device_id: string;
   timestamp: string;
+  pm0_1?: number;
   pm0_3?: number;
   pm1_0?: number;
   pm2_5: number;
@@ -9,9 +10,19 @@ export interface Telemetry {
   co2: number;
   voc: number;
   hcho?: number;
+  no2_ppm?: number;
+  o3_ppm?: number;
   voc_index?: number;
   nox_index?: number;
   gas_resistance?: number;
+  acoustic_db?: number;
+  dominant_freq_hz?: number;
+  heart_rate_bpm?: number;
+  hrv_ms?: number;
+  spo2_pct?: number;
+  respiratory_rate_bpm?: number;
+  mesh_node_id?: string;
+  transport_channel?: string;
   temperature: number;
   humidity: number;
   pressure?: number;
@@ -25,6 +36,7 @@ export interface Telemetry {
   aqi_color?: string;
   dominant_pollutant: string;
   diagnosis?: AnomalyDiagnosis;
+  copilot_advisory?: string;
   decay_constant_k?: number;
   cadr_estimate_cfm?: number;
   filter_health_status?: string;
@@ -244,4 +256,209 @@ export interface CrossRoomDiffusionResponse {
   nodes: RoomDiffusionNode[];
   edges: DiffusionEdge[];
   summary: string;
+}
+
+// ==========================================
+// v4.0 Generative Copilot ("AirGuard Agent")
+// ==========================================
+export interface CopilotQueryRequest {
+  query: string;
+  device_id?: string;
+  user_id?: string;
+}
+
+export interface CopilotResponse {
+  response: string;
+  incident_type?: string;
+  confidence: number;
+  root_cause_diagnosis?: string;
+  recommended_actions: string[];
+  estimated_clear_time_mins?: number;
+  clinical_health_impact?: string;
+  citations: string[];
+}
+
+export interface CopilotIncidentAdvisory {
+  incident_code: string;
+  severity: string;
+  location: string;
+  plain_language_advisory: string;
+  suggested_action: string;
+  automated_action_taken: string;
+  estimated_clear_time_mins?: number;
+  timestamp: string;
+}
+
+// ==========================================
+// v4.0 PINN 3D Fluid Dynamics & Street Canyon
+// ==========================================
+export interface PINNPoint3D {
+  x: number;
+  y: number;
+  z: number;
+  velocity_u: number;
+  velocity_v: number;
+  velocity_w: number;
+  concentration: number;
+  pressure_pa: number;
+  streamline_id: number;
+}
+
+export interface PINNSimulationResult {
+  id: string;
+  timestamp: string;
+  domain_type: string;
+  navier_stokes_residual: number;
+  advection_flux_vector: number[];
+  grid_points: PINNPoint3D[];
+  vortex_intensity: number;
+  predicted_clear_time_mins: number;
+  optimal_purifier_coordinates: {
+    x_m: number;
+    y_m: number;
+    z_m: number;
+  };
+}
+
+export interface StreetCanyonResult {
+  canyon_id: string;
+  aspect_ratio: number;
+  recirculation_regime: "ISOLATED_ROUGHNESS" | "WAKE_INTERFERENCE" | "SKIMMING_FLOW";
+  leeward_concentration_ug_m3: number;
+  windward_concentration_ug_m3: number;
+  canyon_vortex_rpm: number;
+  pedestrian_exposure_tier: "LOW" | "MODERATE" | "HAZARDOUS";
+}
+
+// ==========================================
+// v4.0 Industrial BMS & Dynamic Grid Optimization
+// ==========================================
+export interface BMSDevice {
+  id: string;
+  name: string;
+  protocol: "BACNET_IP" | "MODBUS_TCP" | "KNX" | "SPARKPLUG_B" | "MATTER";
+  point_name: string;
+  current_state: string;
+  speed_pct: number;
+  damper_pct: number;
+  power_draw_kw: number;
+  is_online: boolean;
+}
+
+export interface GridTariffPeriod {
+  hour: number;
+  tier: "OFF_PEAK" | "SHOULDER" | "PEAK" | "SOLAR_SURPLUS";
+  rate_cents_per_kwh: number;
+}
+
+export interface GridOptimizationStatus {
+  current_tariff_tier: string;
+  current_rate_cents_per_kwh: number;
+  solar_surplus_active: boolean;
+  preemptive_scrubbing_engaged: boolean;
+  forecasted_pm25_spike_mins: number;
+  calculated_cadr_cfm: number;
+  cadr_decay_constant_k?: number;
+  estimated_hourly_cost_dollars: number;
+  total_savings_pct: number;
+}
+
+// ==========================================
+// v4.0 Swarm Mesh & Resilience
+// ==========================================
+export interface MeshNodeInfo {
+  node_id: string;
+  role: "GATEWAY" | "RELAY_NODE" | "EDGE_LEAF";
+  mac_address: string;
+  parent_node_id?: string;
+  rssi_dbm: number;
+  hop_count: number;
+  active_transport: "WIFI" | "ESP_NOW_MESH" | "CELLULAR_NBIOT" | "LORAWAN";
+  battery_pct: number;
+  is_online: boolean;
+  last_packet_at: string;
+}
+
+export interface MeshTopologyResponse {
+  gateway_id: string;
+  total_nodes: number;
+  healthy_mesh: boolean;
+  nodes: MeshNodeInfo[];
+  routes: Array<{
+    from: string;
+    to: string;
+    transport: string;
+    lq_pct: number;
+  }>;
+  peer_consensus_status: string;
+}
+
+export interface PeerConsensusReport {
+  timestamp: string;
+  nodes_involved: string[];
+  baseline_pm25_median: number;
+  calibrated_offsets: Record<string, number>;
+  drift_variance_reduction_pct: number;
+}
+
+// ==========================================
+// v4.0 Wearable Biometric Fusion
+// ==========================================
+export interface WearableTelemetry {
+  source: string;
+  heart_rate_bpm: number;
+  hrv_ms: number;
+  spo2_pct: number;
+  respiratory_rate_bpm: number;
+  last_synced: string;
+}
+
+export interface DynamicIntakeResponse {
+  user_id: string;
+  current_heart_rate: number;
+  baseline_resting_hr: number;
+  dynamic_ve_lpm: number;
+  cumulative_intake_pm25_ug: number;
+  excess_intake_due_to_hr_pct: number;
+  physiological_strain_index: "NORMAL" | "MILD_STRAIN" | "HIGH_STRAIN" | "BRONCHIAL_WARNING";
+}
+
+// ==========================================
+// v4.0 Hybrid Vector Database Incident Memory
+// ==========================================
+export interface IncidentMemoryItem {
+  incident_id: string;
+  timestamp: string;
+  incident_type: string;
+  similarity_score: number;
+  sensor_signature: Record<string, number>;
+  resolution_strategy: string;
+  time_to_recover_mins: number;
+}
+
+export interface IncidentMemorySearchResponse {
+  query_signature: Record<string, number>;
+  matched_incidents: IncidentMemoryItem[];
+  suggested_playbook: string;
+}
+
+// ==========================================
+// v4.0 Zero-Trust & Differential Privacy
+// ==========================================
+export interface CertificateVerifyResponse {
+  device_id: string;
+  hardware_root_of_trust: string;
+  x509_cert_valid: boolean;
+  tls_version: string;
+  issuer: string;
+  fingerprint_sha256: string;
+}
+
+export interface PrivacyAnonymizeResponse {
+  dataset_id: string;
+  record_count: number;
+  epsilon: number;
+  laplace_scale_b: number;
+  anonymized_records: any[];
+  differential_privacy_guaranteed: boolean;
 }
